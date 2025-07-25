@@ -1,0 +1,92 @@
+[
+  {
+    "question": "从设备D到该设备的信号传递路径是?（请注意，部分信息已省略）",
+    "answer": "设备D->设备A",
+    "type": "path",
+    "obfuscated": true
+  },
+  {
+    "question": "设备A和某终端之间的供电关系是什么?",
+    "answer": "电源线",
+    "type": "relation",
+    "obfuscated": true
+  },
+  {
+    "question": "从该设备到设备E的信号传递路径是?（请注意，部分信息已省略）",
+    "answer": "设备A->设备D->设备E",
+    "type": "path",
+    "obfuscated": true
+  },
+  {
+    "question": "设备D的主要功能是什么?（请注意，部分信息已省略）",
+    "answer": "监控终端",
+    "type": "entity_attr",
+    "obfuscated": true
+  },
+  {
+    "question": "设备D的主要功能是什么?（请注意，部分信息已省略）",
+    "answer": "监控终端",
+    "type": "entity_attr",
+    "obfuscated": true
+  },
+  {
+    "question": "这位领导人的主要功能是什么?",
+    "answer": "控制器",
+    "type": "entity_attr",
+    "obfuscated": true
+  },
+  {
+    "question": "从设备C到该设备的信号传递路径是?（请注意，部分信息已省略）",
+    "answer": "设备C->设备B->设备A",
+    "type": "path",
+    "obfuscated": true
+  },
+  {
+    "question": "从设备C到设备E的信号传递路径是?（请注意，部分信息已省略）",
+    "answer": "设备C->设备D->设备E",
+    "type": "path",
+    "obfuscated": true
+  },
+  {
+    "question": "设备D的主要功能是什么?（请注意，部分信息已省略）",
+    "answer": "监控终端",
+    "type": "entity_attr",
+    "obfuscated": true
+  },
+  {
+    "question": "某终端的主要功能是什么?",
+    "answer": "监控终端",
+    "type": "entity_attr",
+    "obfuscated": true
+  },
+  {
+    "question": "从设备C到设备D的信号传递路径是?（请注意，部分信息已省略）",
+    "answer": "设备C->设备D",
+    "type": "path",
+    "obfuscated": true
+  },
+  {
+    "question": "设备A和某终端之间的供电关系是什么?",
+    "answer": "电源线",
+    "type": "relation",
+    "obfuscated": true
+  },
+  {
+    "question": "从某终端到设备B的信号传递路径是?",
+    "answer": "设备D->设备C->设备B",
+    "type": "path",
+    "obfuscated": true
+  },
+  {
+    "question": "某终端的主要功能是什么?",
+    "answer": "监控终端",
+    "type": "entity_attr",
+    "obfuscated": true
+  },
+  {
+    "question": "设备C和设备D之间的监控关系是什么?（请注意，部分信息已省略）",
+    "answer": "实时监控",
+    "type": "relation",
+    "obfuscated": true
+  }
+]

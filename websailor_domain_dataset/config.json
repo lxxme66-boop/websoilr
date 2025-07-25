@@ -1,0 +1,7 @@
+{
+  "input_text_dir": "input_texts/",
+  "output_dataset_dir": "output_dataset/",
+  "question_template_file": "templates/question_templates.json",
+  "obfuscation_pattern_file": "templates/obfuscation_patterns.json",
+  "trajectory_template_file": "templates/trajectory_templates.json"
+}
