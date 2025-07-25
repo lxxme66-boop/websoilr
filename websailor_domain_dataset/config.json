@@ -1,0 +1,256 @@
+{
+  "project_name": "WebSailor TCL工业垂域数据集",
+  "version": "1.0.0",
+  "description": "基于WebSailor核心思想构造的TCL工业垂域数据集生成配置",
+  
+  "log_level": "INFO",
+  "input_texts_dir": "input_texts",
+  "output_dir": "output_dataset",
+  
+  "knowledge_graph": {
+    "entity_extraction": {
+      "methods": ["spacy_ner", "bert_ner", "rule_based"],
+      "confidence_threshold": 0.7,
+      "max_entities_per_text": 50
+    },
+    "relation_extraction": {
+      "methods": ["dependency_parsing", "bert_relation", "pattern_matching"],
+      "confidence_threshold": 0.6,
+      "max_relations_per_text": 30
+    },
+    "graph_construction": {
+      "merge_similar_entities": true,
+      "similarity_threshold": 0.85,
+      "filter_low_frequency": true,
+      "min_frequency": 2
+    }
+  },
+  
+  "subgraph_sampling": {
+    "num_subgraphs": 1000,
+    "sampling_strategies": [
+      {
+        "name": "star_topology",
+        "description": "星形拓扑：一个中心节点连接多个周边节点",
+        "weight": 0.3,
+        "parameters": {
+          "center_node_types": ["产品", "技术", "公司"],
+          "min_neighbors": 3,
+          "max_neighbors": 8
+        }
+      },
+      {
+        "name": "path_topology", 
+        "description": "路径拓扑：线性连接的节点链",
+        "weight": 0.25,
+        "parameters": {
+          "min_path_length": 3,
+          "max_path_length": 6,
+          "include_branches": true
+        }
+      },
+      {
+        "name": "cluster_topology",
+        "description": "簇拓扑：密集连接的节点群",
+        "weight": 0.25,
+        "parameters": {
+          "min_cluster_size": 4,
+          "max_cluster_size": 10,
+          "min_internal_edges": 3
+        }
+      },
+      {
+        "name": "tree_topology",
+        "description": "树形拓扑：层次结构的节点关系",
+        "weight": 0.2,
+        "parameters": {
+          "max_depth": 4,
+          "min_branches": 2,
+          "max_branches": 5
+        }
+      }
+    ]
+  },
+  
+  "question_generation": {
+    "question_types": [
+      {
+        "name": "factual_single",
+        "description": "单跳事实查询：直接查询某个实体的属性",
+        "weight": 0.2,
+        "templates": [
+          "{entity}的{attribute}是什么？",
+          "请问{entity}具有什么样的{attribute}？",
+          "{entity}在{attribute}方面表现如何？"
+        ]
+      },
+      {
+        "name": "factual_multi",
+        "description": "多跳事实查询：需要通过多个节点推理",
+        "weight": 0.25,
+        "templates": [
+          "{entity1}通过{relation1}连接到的{entity2}有什么{attribute}？",
+          "与{entity1}相关的{entity2}在{domain}领域有哪些特点？",
+          "从{entity1}到{entity2}的路径中涉及哪些{concept}？"
+        ]
+      },
+      {
+        "name": "comparative",
+        "description": "比较查询：比较多个实体的异同",
+        "weight": 0.2,
+        "templates": [
+          "{entity1}和{entity2}在{aspect}方面有什么区别？",
+          "比较{entity1}与{entity2}的{attribute}",
+          "{entity1}相比{entity2}有什么优势？"
+        ]
+      },
+      {
+        "name": "aggregative",
+        "description": "聚合查询：统计或汇总信息",
+        "weight": 0.15,
+        "templates": [
+          "{category}类别下总共有多少个{entity_type}？",
+          "在{domain}领域中，{attribute}最高的是哪些{entity_type}？",
+          "{entity}相关的所有{relation_type}关系有哪些？"
+        ]
+      },
+      {
+        "name": "reasoning",
+        "description": "推理查询：需要逻辑推理的复杂问题",
+        "weight": 0.2,
+        "templates": [
+          "如果{condition1}成立，那么{entity}会如何{action}？",
+          "基于{entity1}的{attribute1}和{entity2}的{attribute2}，可以推断出什么？",
+          "为什么{entity1}会与{entity2}产生{relation}关系？"
+        ]
+      }
+    ]
+  },
+  
+  "obfuscation_processing": {
+    "obfuscation_strategies": [
+      {
+        "name": "entity_anonymization",
+        "description": "实体匿名化：用模糊描述替代具体实体名",
+        "weight": 0.3,
+        "parameters": {
+          "anonymization_patterns": [
+            "这家公司",
+            "该产品",
+            "这项技术",
+            "这位专家",
+            "该设备",
+            "这个系统"
+          ],
+          "preserve_type_info": true
+        }
+      },
+      {
+        "name": "relation_obfuscation",
+        "description": "关系模糊化：模糊描述实体间的具体关系",
+        "weight": 0.25,
+        "parameters": {
+          "obfuscation_patterns": [
+            "与...相关",
+            "和...有联系",
+            "涉及到...",
+            "关联着...",
+            "连接到..."
+          ]
+        }
+      },
+      {
+        "name": "noise_injection",
+        "description": "噪声注入：添加干扰信息和冗余描述",
+        "weight": 0.25,
+        "parameters": {
+          "noise_types": [
+            "irrelevant_entities",
+            "redundant_descriptions", 
+            "ambiguous_references",
+            "temporal_confusion"
+          ],
+          "noise_ratio": 0.3
+        }
+      },
+      {
+        "name": "information_hiding",
+        "description": "信息隐藏：隐藏部分关键信息，增加推理难度",
+        "weight": 0.2,
+        "parameters": {
+          "hiding_strategies": [
+            "implicit_relations",
+            "partial_attributes",
+            "contextual_clues",
+            "indirect_references"
+          ]
+        }
+      }
+    ]
+  },
+  
+  "trajectory_generation": {
+    "trajectory_types": [
+      "step_by_step_reasoning",
+      "graph_traversal_path", 
+      "evidence_collection",
+      "hypothesis_validation"
+    ],
+    "max_trajectory_length": 10,
+    "include_intermediate_steps": true,
+    "include_confidence_scores": true
+  },
+  
+  "data_synthesis": {
+    "output_formats": [
+      "qa_pairs",
+      "trajectories", 
+      "knowledge_graph",
+      "statistics"
+    ],
+    "quality_filters": {
+      "min_question_length": 10,
+      "max_question_length": 200,
+      "min_answer_length": 5,
+      "max_answer_length": 500,
+      "coherence_threshold": 0.7
+    },
+    "augmentation": {
+      "paraphrase_questions": true,
+      "generate_negative_samples": true,
+      "add_context_variations": true
+    }
+  },
+  
+  "tcl_industry_domain": {
+    "focus_areas": [
+      "显示技术",
+      "半导体制造",
+      "智能终端",
+      "人工智能",
+      "物联网",
+      "新能源",
+      "智能制造"
+    ],
+    "entity_types": [
+      "产品",
+      "技术",
+      "公司",
+      "专家",
+      "专利",
+      "标准",
+      "市场",
+      "应用场景"
+    ],
+    "relation_types": [
+      "开发",
+      "应用",
+      "竞争",
+      "合作",
+      "投资",
+      "收购",
+      "技术转移",
+      "标准制定"
+    ]
+  }
+}
