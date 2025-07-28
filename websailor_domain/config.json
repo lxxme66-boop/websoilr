@@ -1,0 +1,165 @@
+{
+  "project_name": "WebSailor TCL Industrial Domain Dataset",
+  "version": "1.0.0",
+  "domain": "TCL工业垂域",
+  
+  "models": {
+    "expert_model": {
+      "path": "/mnt/storage/models/Qwen/Qwen3-32B-Instruct",
+      "description": "专家模型（轨迹生成）",
+      "max_length": 8192,
+      "temperature": 0.7
+    },
+    "qa_generator_model": {
+      "path": "/mnt/storage/models/Qwen/Qwen2.5-14B-Instruct",
+      "description": "QA生成模型",
+      "max_length": 4096,
+      "temperature": 0.8
+    },
+    "reconstructor_model": {
+      "path": "/mnt/storage/models/deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
+      "description": "推理重建模型",
+      "max_length": 8192,
+      "temperature": 0.6
+    },
+    "kg_extractor_model": {
+      "path": "/mnt/data/LLM/lhy/models/fintuned_embedding/fv6",
+      "description": "知识图谱提取模型",
+      "embedding_dim": 768
+    }
+  },
+  
+  "knowledge_graph": {
+    "entity_types": [
+      "产品", "技术", "工艺", "材料", "设备", 
+      "标准", "专利", "公司", "人员", "项目"
+    ],
+    "relation_types": [
+      "使用", "包含", "生产", "研发", "依赖",
+      "改进", "替代", "认证", "合作", "应用于"
+    ],
+    "extraction_rules": {
+      "min_entity_length": 2,
+      "max_entity_length": 20,
+      "confidence_threshold": 0.7
+    }
+  },
+  
+  "subgraph_sampling": {
+    "num_subgraph_samples": 2000,
+    "topology_types": [
+      "chain",
+      "star", 
+      "tree",
+      "cycle",
+      "mixed"
+    ],
+    "subgraph_sizes": {
+      "min_nodes": 3,
+      "max_nodes": 15,
+      "min_edges": 2,
+      "max_edges": 20
+    },
+    "sampling_strategies": [
+      "random_walk",
+      "bfs_sampling",
+      "importance_sampling",
+      "topology_guided"
+    ]
+  },
+  
+  "question_generation": {
+    "question_types": [
+      "factual",
+      "comparison",
+      "reasoning",
+      "multi_hop",
+      "counterfactual",
+      "temporal",
+      "causal"
+    ],
+    "complexity_levels": {
+      "simple": 0.3,
+      "medium": 0.5,
+      "complex": 0.2
+    },
+    "language_patterns": {
+      "zh_cn": 0.7,
+      "en": 0.3
+    }
+  },
+  
+  "obfuscation": {
+    "strategies": [
+      "entity_replacement",
+      "relation_paraphrase",
+      "redundancy_injection",
+      "ambiguity_introduction",
+      "context_mixing"
+    ],
+    "obfuscation_rate": 0.6,
+    "patterns": {
+      "entity_patterns": [
+        "这种{TYPE}",
+        "某个{TYPE}",
+        "相关的{TYPE}",
+        "该{TYPE}"
+      ],
+      "relation_patterns": [
+        "与...有关",
+        "涉及到",
+        "关联于",
+        "相关的"
+      ]
+    }
+  },
+  
+  "trajectory_generation": {
+    "max_steps": 10,
+    "reasoning_types": [
+      "deductive",
+      "inductive",
+      "abductive",
+      "analogical"
+    ],
+    "trajectory_formats": [
+      "chain_of_thought",
+      "tree_of_thought",
+      "graph_of_thought"
+    ]
+  },
+  
+  "dataset_synthesis": {
+    "train_ratio": 0.8,
+    "val_ratio": 0.1,
+    "test_ratio": 0.1,
+    "output_formats": [
+      "json",
+      "jsonl",
+      "csv"
+    ],
+    "quality_checks": {
+      "min_question_length": 10,
+      "max_question_length": 200,
+      "answer_validation": true,
+      "trajectory_validation": true
+    }
+  },
+  
+  "tcl_specific": {
+    "focus_areas": [
+      "显示技术",
+      "家电制造",
+      "半导体",
+      "智能制造",
+      "新材料"
+    ],
+    "technical_terms": {
+      "display": ["LCD", "OLED", "Mini-LED", "量子点"],
+      "appliance": ["压缩机", "变频", "节能", "智能控制"],
+      "semiconductor": ["芯片", "封装", "制程", "光刻"],
+      "manufacturing": ["自动化", "工业4.0", "MES", "数字孪生"],
+      "materials": ["复合材料", "纳米材料", "功能材料", "环保材料"]
+    }
+  }
+}
