@@ -2,15 +2,13 @@
 # -*- coding: utf-8 -*-
 
 """
-改进版DeepSeek翻译工具
-- 修复长文档只翻译一部分的问题
-- 优化文本分割逻辑
-- 增加进度显示和错误处理
+改进版本：优化文本分割算法，确保长文档能够被正确分割翻译
 """
 
 import os
 import time
 from pathlib import Path
+import re
 
 def simple_translate():
     """简化的翻译流程"""
@@ -30,7 +28,7 @@ def simple_translate():
     print("1. DeepSeek-R1-Distill-Qwen-1.5B (最快)")
     print("2. DeepSeek-R1-Distill-Qwen-7B (推荐)")
     print("3. DeepSeek-R1-Distill-Qwen-14B (高质量)")
-    print("4. gte_Qwen2-7B-instruct (备选)")
+    print("4. gte_Qwen2-7B-instruct (替代选项)")
     
     # 选择模型
     while True:
@@ -57,15 +55,15 @@ def simple_translate():
     if not output_dir:
         output_dir = "./chinese_translations"
     
-    # 询问分片大小
-    print("\n文本分片设置:")
-    print("1. 小片段 (800字符) - 更精确但速度慢")
-    print("2. 中片段 (1500字符) - 平衡选择")
-    print("3. 大片段 (3000字符) - 速度快但可能遗漏")
-    chunk_choice = input("选择分片大小 (1-3) [默认: 2]: ").strip()
+    # 询问分割策略
+    print("\n文本分割选项:")
+    print("1. 自动分割 (推荐，每1000字符)")
+    print("2. 按段落分割 (适合结构化文档)")
+    print("3. 智能分割 (根据句子边界)")
     
-    chunk_sizes = {"1": 800, "2": 1500, "3": 3000}
-    chunk_size = chunk_sizes.get(chunk_choice, 1500)
+    split_choice = input("选择分割策略 (1-3) [默认: 1]: ").strip()
+    if not split_choice:
+        split_choice = "1"
     
     print(f"\n开始加载模型: {Path(model_path).name}")
     
@@ -88,12 +86,12 @@ def simple_translate():
         print("✅ 模型加载成功")
         
         # 开始翻译
-        translate_files(input_dir, output_dir, model, tokenizer, chunk_size)
+        translate_files(input_dir, output_dir, model, tokenizer, split_choice)
         
     except Exception as e:
         print(f"❌ 错误: {e}")
 
-def translate_files(input_dir, output_dir, model, tokenizer, chunk_size=1500):
+def translate_files(input_dir, output_dir, model, tokenizer, split_choice):
     """翻译文件"""
     import torch
     
@@ -108,15 +106,14 @@ def translate_files(input_dir, output_dir, model, tokenizer, chunk_size=1500):
         return
     
     print(f"\n📁 找到 {len(txt_files)} 个文件")
-    print(f"📏 使用分片大小: {chunk_size} 字符")
     
-    # 统计信息
-    total_chars = 0
-    total_chunks = 0
-    start_time = time.time()
+    # 记录统计信息
+    total_start = time.time()
+    success_count = 0
     
     for i, txt_file in enumerate(txt_files, 1):
         print(f"\n[{i}/{len(txt_files)}] 翻译: {txt_file.name}")
+        file_start = time.time()
         
         try:
             # 读取文件
@@ -127,41 +124,32 @@ def translate_files(input_dir, output_dir, model, tokenizer, chunk_size=1500):
                 print("⚠ 文件为空，跳过")
                 continue
             
-            file_size = len(content)
-            total_chars += file_size
-            print(f"  文件大小: {file_size:,} 字符")
+            print(f"  文件大小: {len(content)} 字符")
             
-            # 智能分割文本
-            chunks = smart_split_content(content, chunk_size)
-            total_chunks += len(chunks)
-            print(f"  分成 {len(chunks)} 个片段")
+            # 根据选择的策略分割内容
+            if split_choice == "1":
+                chunks = split_content_auto(content, 1000)
+            elif split_choice == "2":
+                chunks = split_content_by_paragraph(content, 1000)
+            else:
+                chunks = split_content_smart(content, 1000)
             
+            print(f"  分割成 {len(chunks)} 个片段")
             translated_chunks = []
             
             for j, chunk in enumerate(chunks):
-                print(f"  翻译片段 {j+1}/{len(chunks)} ({len(chunk)} 字符)", end="")
+                print(f"  翻译片段 {j+1}/{len(chunks)} ({len(chunk)} 字符)", end="", flush=True)
                 
                 # 构建prompt
-                prompt = f"""请将以下英文内容完整翻译成中文。注意：
-1. 保持原文的格式和结构
-2. 专业术语要准确
-3. 不要遗漏任何内容
-
-英文原文：
-{chunk}
-
-中文翻译："""
+                prompt = f"请将以下英文翻译成中文，保持原文格式：\n\n{chunk}\n\n中文翻译："
                 
                 # 生成翻译
-                inputs = tokenizer.encode(prompt, return_tensors="pt", truncation=True, max_length=4096)
-                
-                if inputs.shape[1] > 4096:
-                    print(" ⚠ 输入过长，自动截断")
+                inputs = tokenizer.encode(prompt, return_tensors="pt", max_length=2048, truncation=True)
                 
                 with torch.no_grad():
                     outputs = model.generate(
                         inputs.to(model.device),
-                        max_new_tokens=3000,  # 增加输出长度
+                        max_new_tokens=2048,
                         temperature=0.3,
                         do_sample=True,
                         pad_token_id=tokenizer.eos_token_id,
@@ -174,74 +162,74 @@ def translate_files(input_dir, output_dir, model, tokenizer, chunk_size=1500):
                 if "中文翻译：" in response:
                     translation = response.split("中文翻译：")[-1].strip()
                 else:
-                    # 尝试其他分割方式
                     translation = response[len(prompt):].strip()
-                
-                # 确保翻译不为空
-                if not translation:
-                    print(" ⚠ 翻译为空，重试")
-                    translation = chunk  # 保留原文
                 
                 translated_chunks.append(translation)
                 print(" ✓")
             
-            # 合并翻译结果
-            result = "\n\n".join(translated_chunks)
-            
-            # 添加元信息
-            header = f"""# {txt_file.name} - 中文翻译
-# 原文件大小: {file_size:,} 字符
-# 分片数量: {len(chunks)}
-# 翻译时间: {time.strftime('%Y-%m-%d %H:%M:%S')}
-# 使用模型: {Path(model.name_or_path).name}
-
-"""
-            
             # 保存结果
+            result = "\n\n".join(translated_chunks)
             output_file = output_path / f"{txt_file.stem}_中文.txt"
             
             with open(output_file, 'w', encoding='utf-8') as f:
-                f.write(header + result)
+                f.write(result)
             
-            # 验证翻译完整性
-            result_size = len(result)
-            coverage = (result_size / file_size) * 100
-            
-            print(f"✅ 完成: {output_file.name}")
-            print(f"  翻译覆盖率: {coverage:.1f}% ({result_size:,}/{file_size:,} 字符)")
-            
-            if coverage < 50:
-                print("  ⚠️ 警告：翻译覆盖率较低，可能有内容遗漏")
+            file_time = time.time() - file_start
+            print(f"✅ 完成: {output_file.name} (耗时: {file_time:.1f}秒)")
+            success_count += 1
             
         except Exception as e:
-            print(f"\n❌ 翻译失败: {e}")
-            import traceback
-            traceback.print_exc()
+            print(f"❌ 翻译失败: {e}")
     
     # 总结
-    elapsed = time.time() - start_time
+    total_time = time.time() - total_start
     print(f"\n{'='*50}")
-    print(f"✅ 翻译完成!")
-    print(f"  总字符数: {total_chars:,}")
-    print(f"  总片段数: {total_chunks}")
-    print(f"  总用时: {elapsed/60:.1f} 分钟")
-    print(f"  平均速度: {total_chars/elapsed:.0f} 字符/秒")
+    print(f"翻译完成！")
+    print(f"成功: {success_count}/{len(txt_files)} 个文件")
+    print(f"总耗时: {total_time:.1f}秒")
+    print(f"输出目录: {output_path.absolute()}")
 
-def smart_split_content(text, max_length):
-    """智能分割文本，确保不遗漏内容"""
-    
+def split_content_auto(text, max_length):
+    """自动分割文本 - 按固定长度分割，尽量在句子边界"""
     if len(text) <= max_length:
         return [text]
     
     chunks = []
+    current_pos = 0
     
-    # 首先尝试按段落分割
+    while current_pos < len(text):
+        # 计算这一块的结束位置
+        end_pos = min(current_pos + max_length, len(text))
+        
+        # 如果不是最后一块，尝试在句子边界分割
+        if end_pos < len(text):
+            # 查找最近的句子结束符
+            chunk = text[current_pos:end_pos]
+            
+            # 优先级：句号 > 问号 > 感叹号 > 换行 > 逗号 > 空格
+            for delimiter in ['. ', '? ', '! ', '\n', ', ', ' ']:
+                last_delimiter = chunk.rfind(delimiter)
+                if last_delimiter > max_length * 0.5:  # 至少保留一半长度
+                    end_pos = current_pos + last_delimiter + len(delimiter)
+                    break
+        
+        chunks.append(text[current_pos:end_pos].strip())
+        current_pos = end_pos
+    
+    return chunks
+
+def split_content_by_paragraph(text, max_length):
+    """按段落分割，确保每个片段不超过最大长度"""
     paragraphs = text.split('\n\n')
-    
+    chunks = []
     current_chunk = ""
     
     for para in paragraphs:
-        # 如果单个段落就超过最大长度，需要进一步分割
+        para = para.strip()
+        if not para:
+            continue
+            
+        # 如果段落本身就太长，需要进一步分割
         if len(para) > max_length:
             # 先保存当前块
             if current_chunk:
@@ -249,62 +237,83 @@ def smart_split_content(text, max_length):
                 current_chunk = ""
             
             # 分割长段落
-            # 按句子分割
-            sentences = split_into_sentences(para)
-            
-            for sent in sentences:
-                if len(current_chunk) + len(sent) + 1 <= max_length:
-                    current_chunk += (" " if current_chunk else "") + sent
-                else:
-                    if current_chunk:
-                        chunks.append(current_chunk)
-                    current_chunk = sent
+            sub_chunks = split_content_auto(para, max_length)
+            chunks.extend(sub_chunks)
         
-        else:
-            # 正常段落
-            if len(current_chunk) + len(para) + 2 <= max_length:
-                current_chunk += ("\n\n" if current_chunk else "") + para
+        # 如果加上这个段落不会超过限制
+        elif len(current_chunk) + len(para) + 2 <= max_length:
+            if current_chunk:
+                current_chunk += "\n\n" + para
             else:
-                if current_chunk:
-                    chunks.append(current_chunk)
                 current_chunk = para
+        
+        # 如果会超过限制，保存当前块并开始新块
+        else:
+            if current_chunk:
+                chunks.append(current_chunk)
+            current_chunk = para
     
-    # 不要忘记最后一块
+    # 保存最后一块
     if current_chunk:
         chunks.append(current_chunk)
     
-    # 验证没有内容丢失
-    total_length = sum(len(chunk) for chunk in chunks)
-    original_length = len(text)
-    
-    if abs(total_length - original_length) > 100:  # 允许少量差异（空格等）
-        print(f"\n⚠️ 警告：分割后总长度({total_length})与原文({original_length})相差较大")
-    
     return chunks
 
-def split_into_sentences(text):
-    """将文本分割成句子"""
-    import re
+def split_content_smart(text, max_length):
+    """智能分割 - 优先保持段落完整性，其次是句子完整性"""
+    if len(text) <= max_length:
+        return [text]
     
-    # 简单的句子分割规则
-    sentences = re.split(r'(?<=[.!?])\s+', text)
+    # 首先按段落分割
+    paragraphs = text.split('\n\n')
+    chunks = []
+    current_chunk = ""
     
-    # 处理过短的句子（可能是缩写等）
-    result = []
-    current = ""
-    
-    for sent in sentences:
-        if len(sent) < 20 and current:  # 太短的句子合并
-            current += " " + sent
+    for para in paragraphs:
+        para = para.strip()
+        if not para:
+            continue
+        
+        # 如果段落太长，按句子分割
+        if len(para) > max_length:
+            if current_chunk:
+                chunks.append(current_chunk)
+                current_chunk = ""
+            
+            # 按句子分割段落
+            sentences = re.split(r'(?<=[.!?])\s+', para)
+            
+            for sentence in sentences:
+                if len(sentence) > max_length:
+                    # 句子还是太长，强制分割
+                    sub_chunks = split_content_auto(sentence, max_length)
+                    chunks.extend(sub_chunks)
+                elif len(current_chunk) + len(sentence) + 1 <= max_length:
+                    if current_chunk:
+                        current_chunk += " " + sentence
+                    else:
+                        current_chunk = sentence
+                else:
+                    if current_chunk:
+                        chunks.append(current_chunk)
+                    current_chunk = sentence
+        
+        # 段落长度合适
+        elif len(current_chunk) + len(para) + 4 <= max_length:
+            if current_chunk:
+                current_chunk += "\n\n" + para
+            else:
+                current_chunk = para
         else:
-            if current:
-                result.append(current)
-            current = sent
+            if current_chunk:
+                chunks.append(current_chunk)
+            current_chunk = para
     
-    if current:
-        result.append(current)
+    # 保存最后一块
+    if current_chunk:
+        chunks.append(current_chunk)
     
-    return result
+    return chunks
 
 if __name__ == "__main__":
     simple_translate()
