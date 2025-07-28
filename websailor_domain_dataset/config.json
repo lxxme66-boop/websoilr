@@ -1,0 +1,217 @@
+{
+  "knowledge_graph": {
+    "entity_extraction": {
+      "method": "hybrid",
+      "use_ner": true,
+      "use_dependency_parsing": true,
+      "domain_entities": ["产品", "设备", "工艺", "材料", "参数", "标准", "故障", "维护"]
+    },
+    "relation_extraction": {
+      "method": "pattern_based",
+      "relation_types": [
+        "包含", "属于", "影响", "导致", "需要", "使用", 
+        "生产", "检测", "维护", "优化", "替代", "依赖"
+      ]
+    },
+    "graph_construction": {
+      "merge_similar_entities": true,
+      "similarity_threshold": 0.85,
+      "min_entity_frequency": 2
+    }
+  },
+  
+  "subgraph_sampling": {
+    "sampling_strategies": [
+      {
+        "name": "topology_based",
+        "weight": 0.4,
+        "params": {
+          "min_nodes": 3,
+          "max_nodes": 15,
+          "include_patterns": ["star", "chain", "tree", "cycle"],
+          "hop_limit": 3
+        }
+      },
+      {
+        "name": "semantic_based",
+        "weight": 0.3,
+        "params": {
+          "coherence_threshold": 0.7,
+          "topic_diversity": true
+        }
+      },
+      {
+        "name": "task_oriented",
+        "weight": 0.3,
+        "params": {
+          "task_types": ["故障诊断", "工艺优化", "质量控制", "设备维护"],
+          "complexity_levels": ["简单", "中等", "复杂"]
+        }
+      }
+    ],
+    "total_subgraphs": 1000,
+    "ensure_coverage": true,
+    "balance_topology": true
+  },
+  
+  "question_generation": {
+    "question_types": {
+      "factual": {
+        "weight": 0.2,
+        "templates": [
+          "{entity}的{attribute}是什么？",
+          "{entity1}和{entity2}之间的关系是什么？",
+          "哪些{category}属于{parent_entity}？"
+        ]
+      },
+      "reasoning": {
+        "weight": 0.3,
+        "templates": [
+          "如果{condition}，那么{entity}会如何变化？",
+          "为什么{entity1}会影响{entity2}？",
+          "在{scenario}情况下，应该如何{action}？"
+        ]
+      },
+      "multi_hop": {
+        "weight": 0.3,
+        "templates": [
+          "{entity1}通过什么影响{entity3}？",
+          "从{start}到{end}的完整流程是什么？",
+          "哪个{category}同时满足{condition1}和{condition2}？"
+        ]
+      },
+      "comparative": {
+        "weight": 0.2,
+        "templates": [
+          "{entity1}和{entity2}在{aspect}方面有什么区别？",
+          "哪种{category}更适合{scenario}？",
+          "比较{option1}和{option2}的优缺点。"
+        ]
+      }
+    },
+    "complexity_distribution": {
+      "simple": 0.3,
+      "medium": 0.5,
+      "complex": 0.2
+    },
+    "ensure_answerability": true,
+    "generate_distractors": true
+  },
+  
+  "obfuscation": {
+    "strategies": {
+      "entity_abstraction": {
+        "enabled": true,
+        "level": "moderate",
+        "patterns": [
+          "这个{category}",
+          "某种{type}",
+          "相关的{aspect}",
+          "上述{entity_type}"
+        ]
+      },
+      "information_scattering": {
+        "enabled": true,
+        "scatter_range": [2, 5],
+        "preserve_coherence": true
+      },
+      "redundancy_injection": {
+        "enabled": true,
+        "redundancy_rate": 0.2,
+        "types": ["similar_facts", "related_context", "background_info"]
+      },
+      "ambiguity_introduction": {
+        "enabled": true,
+        "ambiguity_level": "controlled",
+        "preserve_solvability": true
+      }
+    },
+    "maintain_difficulty_balance": true,
+    "validation_checks": true
+  },
+  
+  "trajectory_generation": {
+    "reasoning_patterns": [
+      {
+        "name": "deductive",
+        "weight": 0.3,
+        "steps": ["premise", "rule_application", "conclusion"]
+      },
+      {
+        "name": "inductive",
+        "weight": 0.2,
+        "steps": ["observations", "pattern_recognition", "generalization"]
+      },
+      {
+        "name": "abductive",
+        "weight": 0.2,
+        "steps": ["observation", "hypothesis", "verification"]
+      },
+      {
+        "name": "analogical",
+        "weight": 0.3,
+        "steps": ["source_case", "mapping", "target_application"]
+      }
+    ],
+    "include_dead_ends": true,
+    "dead_end_ratio": 0.15,
+    "max_trajectory_length": 8,
+    "min_trajectory_length": 3,
+    "include_confidence_scores": true
+  },
+  
+  "data_synthesis": {
+    "output_formats": {
+      "qa_pairs": {
+        "include_metadata": true,
+        "include_difficulty": true,
+        "include_source_subgraph": true
+      },
+      "trajectories": {
+        "include_reasoning_type": true,
+        "include_confidence": true,
+        "include_alternative_paths": true
+      },
+      "knowledge_graph": {
+        "export_format": "json",
+        "include_embeddings": false,
+        "include_statistics": true
+      }
+    },
+    "quality_control": {
+      "min_answer_length": 10,
+      "max_answer_length": 500,
+      "check_factual_consistency": true,
+      "remove_duplicates": true,
+      "similarity_threshold": 0.9
+    },
+    "augmentation": {
+      "paraphrase_questions": true,
+      "paraphrase_count": 2,
+      "generate_negative_examples": true,
+      "negative_ratio": 0.2
+    }
+  },
+  
+  "domain_specific": {
+    "tcl_industry": {
+      "focus_areas": [
+        "显示技术",
+        "家电制造",
+        "智能制造",
+        "质量管理",
+        "供应链"
+      ],
+      "terminology_list": "templates/tcl_terms.json",
+      "industry_patterns": "templates/industry_patterns.json"
+    }
+  },
+  
+  "general": {
+    "random_seed": 42,
+    "num_workers": 4,
+    "batch_size": 32,
+    "cache_enabled": true,
+    "verbose": true
+  }
+}
