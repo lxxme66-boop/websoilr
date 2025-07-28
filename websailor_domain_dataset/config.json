@@ -1,0 +1,154 @@
+{
+  "dataset": {
+    "name": "TCL工业垂域数据集",
+    "version": "1.0",
+    "description": "基于WebSailor思想构造的TCL工业领域知识推理数据集",
+    "num_subgraphs": 1000,
+    "target_qa_pairs": 5000
+  },
+  "knowledge_graph": {
+    "entity_types": [
+      "产品", "技术", "工艺", "材料", "设备", "质量指标", "性能参数", "应用场景", "问题", "解决方案"
+    ],
+    "relation_types": [
+      "包含", "依赖", "影响", "改进", "应用于", "导致", "解决", "优化", "测试", "生产"
+    ],
+    "min_nodes": 5,
+    "max_nodes": 50,
+    "embedding_model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+  },
+  "subgraph_sampling": {
+    "sampling_strategies": [
+      "random_walk",
+      "breadth_first",
+      "depth_first", 
+      "community_based",
+      "centrality_based"
+    ],
+    "min_subgraph_size": 3,
+    "max_subgraph_size": 15,
+    "overlap_ratio": 0.3,
+    "diversity_threshold": 0.7,
+    "topology_types": [
+      "star", "chain", "tree", "cycle", "clique", "bipartite"
+    ]
+  },
+  "question_generation": {
+    "question_types": [
+      "factual", "reasoning", "comparison", "causation", "prediction", "troubleshooting"
+    ],
+    "templates": {
+      "factual": [
+        "什么是{entity}？",
+        "{entity}有哪些特点？",
+        "{entity}的主要用途是什么？"
+      ],
+      "reasoning": [
+        "为什么{entity1}会{relation}{entity2}？",
+        "如何解释{entity1}对{entity2}的{relation}？",
+        "分析{entity1}和{entity2}之间的关系"
+      ],
+      "comparison": [
+        "{entity1}和{entity2}有什么区别？",
+        "比较{entity1}和{entity2}的优缺点",
+        "在{scenario}场景下，{entity1}和{entity2}哪个更适合？"
+      ],
+      "causation": [
+        "{entity1}如何影响{entity2}？",
+        "什么因素导致了{entity}的{property}？",
+        "{condition}条件下会产生什么结果？"
+      ],
+      "prediction": [
+        "如果{condition}，{entity}会如何变化？",
+        "预测{entity}在{scenario}下的表现",
+        "{trend}趋势对{entity}有什么影响？"
+      ],
+      "troubleshooting": [
+        "如何解决{entity}的{problem}问题？",
+        "{symptom}现象可能的原因是什么？",
+        "优化{entity}性能的方法有哪些？"
+      ]
+    },
+    "complexity_levels": ["simple", "medium", "complex"],
+    "questions_per_subgraph": 3
+  },
+  "obfuscation": {
+    "techniques": [
+      "entity_masking",
+      "relation_abstraction", 
+      "context_noise",
+      "partial_information",
+      "multiple_candidates"
+    ],
+    "entity_masking": {
+      "probability": 0.4,
+      "mask_types": ["这个产品", "该技术", "此工艺", "相关材料", "某设备"],
+      "preserve_type": true
+    },
+    "relation_abstraction": {
+      "probability": 0.3,
+      "abstract_relations": ["相关", "关联", "涉及", "影响", "连接"]
+    },
+    "context_noise": {
+      "probability": 0.2,
+      "noise_types": ["irrelevant_facts", "distracting_options", "ambiguous_terms"],
+      "noise_ratio": 0.15
+    },
+    "partial_information": {
+      "probability": 0.5,
+      "hide_ratio": 0.3,
+      "hint_probability": 0.7
+    },
+    "multiple_candidates": {
+      "probability": 0.6,
+      "num_candidates": 4,
+      "similarity_threshold": 0.6
+    }
+  },
+  "trajectory_generation": {
+    "reasoning_steps": {
+      "min_steps": 2,
+      "max_steps": 8,
+      "step_types": [
+        "information_gathering",
+        "entity_identification", 
+        "relation_analysis",
+        "inference",
+        "verification",
+        "conclusion"
+      ]
+    },
+    "search_strategies": [
+      "breadth_first_search",
+      "depth_first_search", 
+      "best_first_search",
+      "beam_search"
+    ],
+    "uncertainty_modeling": {
+      "confidence_levels": [0.3, 0.5, 0.7, 0.9],
+      "uncertainty_sources": ["incomplete_info", "ambiguous_context", "multiple_paths"],
+      "resolution_methods": ["additional_search", "cross_validation", "expert_knowledge"]
+    }
+  },
+  "data_synthesis": {
+    "output_format": "json",
+    "quality_filters": {
+      "min_question_length": 10,
+      "max_question_length": 200,
+      "min_answer_length": 5,
+      "max_answer_length": 500,
+      "coherence_threshold": 0.7,
+      "relevance_threshold": 0.8
+    },
+    "augmentation": {
+      "paraphrase_probability": 0.3,
+      "synonym_replacement": 0.2,
+      "sentence_reordering": 0.1
+    },
+    "validation": {
+      "cross_check": true,
+      "human_review_sample": 0.1,
+      "automated_scoring": true
+    }
+  }
+}

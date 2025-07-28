@@ -1,0 +1,94 @@
+{
+  "factual_templates": [
+    "{entity}的{attribute}是什么？",
+    "哪个{entity_type}具有{attribute}特性？",
+    "{entity}属于什么{category}？",
+    "{entity}的主要{feature}有哪些？",
+    "什么是{entity}？",
+    "{entity}有什么特点？"
+  ],
+  "relational_templates": [
+    "{entity1}和{entity2}之间有什么关系？",
+    "{entity1}如何{relation}{entity2}？",
+    "什么{entity_type}能够{action}{target}？",
+    "{entity1}对{entity2}产生了什么{effect}？",
+    "{entity1}与{entity2}的关联是什么？",
+    "{entity1}怎样影响{entity2}？"
+  ],
+  "multi_hop_templates": [
+    "从{start_entity}到{end_entity}需要经过哪些{intermediate_type}？",
+    "{entity1}通过什么方式最终{relation}{entity2}？",
+    "要实现{goal}，需要哪些{resource_type}的支持？",
+    "{problem}的解决方案涉及哪些{component_type}？",
+    "如何从{start_entity}推导出{end_entity}？",
+    "{entity1}间接影响{entity2}的路径是什么？"
+  ],
+  "comparative_templates": [
+    "{entity1}和{entity2}在{aspect}方面有什么不同？",
+    "相比{entity1}，{entity2}的优势是什么？",
+    "哪个{entity_type}在{metric}方面表现更好？",
+    "{category}中最{superlative}的是什么？",
+    "{entity1}与{entity2}相比，哪个更{comparison_aspect}？",
+    "在{dimension}方面，{entity1}和{entity2}谁更优秀？"
+  ],
+  "reasoning_templates": [
+    "如果{condition}，那么{entity}会发生什么变化？",
+    "为什么{entity1}会{relation}{entity2}？",
+    "{phenomenon}的根本原因是什么？",
+    "如何解决{problem}？",
+    "{entity}为什么会出现{state}？",
+    "基于{premise}，可以得出什么结论？"
+  ],
+  "path_finding_templates": [
+    "从{start}到{end}的最短路径是什么？",
+    "{entity1}如何影响到{entity2}？",
+    "{input}经过哪些步骤变成{output}？",
+    "{cause}是如何导致{effect}的？",
+    "寻找{entity1}到{entity2}的连接路径",
+    "{process}的完整流程是什么？"
+  ],
+  "tcl_domain_specific": {
+    "product_quality": [
+      "{product}的质量如何保证？",
+      "影响{product}性能的关键因素有哪些？",
+      "{product}的主要技术指标是什么？"
+    ],
+    "manufacturing_process": [
+      "{product}的生产工艺包括哪些步骤？",
+      "如何优化{process}的效率？",
+      "{equipment}在生产中起什么作用？"
+    ],
+    "technology_application": [
+      "{technology}在{application}中如何应用？",
+      "采用{technology}能带来什么好处？",
+      "{technology}的核心原理是什么？"
+    ],
+    "problem_solving": [
+      "如何解决{product}生产中的{problem}？",
+      "{issue}的根本原因是什么？",
+      "针对{challenge}，有哪些解决方案？"
+    ]
+  },
+  "obfuscation_patterns": {
+    "entity_references": [
+      "这个{type}",
+      "该{category}",
+      "相关{item}",
+      "某个{entity}",
+      "这种{kind}"
+    ],
+    "relation_vagueness": [
+      "某种程度上{relation}",
+      "在一定条件下{relation}",
+      "通过特定方式{relation}",
+      "以某种形式{relation}"
+    ],
+    "temporal_ambiguity": [
+      "最近",
+      "近期",
+      "之前",
+      "当时",
+      "那时候"
+    ]
+  }
+}
