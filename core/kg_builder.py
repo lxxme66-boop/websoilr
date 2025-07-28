@@ -95,11 +95,20 @@ class IndustrialKGBuilder:
         entities = self._parse_json_response(entities_text, [])
 
         if not entities:
+            # 如果第一次解析失败，尝试更宽松的解析
+            entities = self._parse_entities_fallback(entities_text)
+            
+        if not entities:
             logger.warning("未能解析出有效实体")
             return [], []
 
         # 清洗和规范化实体
         clean_entities = self._clean_entities(entities)
+
+        # 如果清洗后没有实体，尝试从文本中直接提取
+        if not clean_entities:
+            logger.info("尝试使用备用方法提取实体...")
+            clean_entities = self._extract_entities_from_text(text_chunk)
 
         if not clean_entities:
             logger.warning("实体字段缺失严重，跳过该段文本")
@@ -146,9 +155,77 @@ class IndustrialKGBuilder:
 
         return clean_entities, relations
 
+    def _parse_entities_fallback(self, text: str) -> List[Dict]:
+        """备用的实体解析方法，处理格式不规范的输出"""
+        entities = []
+        
+        # 尝试按行解析
+        lines = text.split('\n')
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+                
+            # 尝试解析各种可能的格式
+            # 格式1: - 实体名称 (类型)
+            match = re.match(r'^[-•]\s*(.+?)\s*[\(（](.+?)[\)）]', line)
+            if match:
+                name, type_info = match.groups()
+                entities.append({
+                    'name': name.strip(),
+                    'type': type_info.strip()
+                })
+                continue
+            
+            # 格式2: 实体名称：描述
+            match = re.match(r'^(.+?)[：:]\s*(.+)', line)
+            if match:
+                name, desc = match.groups()
+                entities.append({
+                    'name': name.strip(),
+                    'description': desc.strip()
+                })
+                continue
+            
+            # 格式3: 纯文本（可能是实体名称）
+            if len(line) > 2 and len(line) < 50 and not any(c in line for c in '{}[]'):
+                entities.append({'name': line})
+        
+        return entities
+
+    def _extract_entities_from_text(self, text: str) -> List[Dict]:
+        """从文本中直接提取实体（最后的备用方案）"""
+        entities = []
+        
+        # 使用正则表达式查找可能的实体
+        # 查找引号中的内容
+        quoted_terms = re.findall(r'["""\'](.*?)["""\'"]', text)
+        for term in quoted_terms[:10]:  # 限制数量
+            if 2 < len(term) < 30:
+                entities.append({
+                    'entity_id': self._generate_entity_id(term),
+                    'name': term,
+                    'type': self._infer_entity_type({'name': term}),
+                    'description': f"从文本中提取的术语: {term}"
+                })
+        
+        # 查找专业术语模式（英文缩写、化学式等）
+        technical_terms = re.findall(r'\b[A-Z][A-Za-z0-9\-:]+\b', text)
+        for term in set(technical_terms[:5]):  # 去重并限制数量
+            if len(term) > 2:
+                entities.append({
+                    'entity_id': term.lower(),
+                    'name': term,
+                    'type': '技术术语',
+                    'description': f"技术术语或缩写: {term}"
+                })
+        
+        return entities
+    
     def _clean_entities(self, entities: List[Dict]) -> List[Dict]:
         """清洗和规范化实体数据"""
         clean_entities = []
+        entity_counter = 0  # 用于生成唯一ID
         
         for e in entities:
             # 处理字段名称的变体
@@ -160,37 +237,125 @@ class IndustrialKGBuilder:
             elif 'id' in e:
                 entity['entity_id'] = e['id']
             else:
-                logger.warning(f"[实体缺少ID] {e}")
-                # 尝试从 name 生成 ID
+                # 尝试从其他字段生成 ID
                 if 'name' in e:
                     entity['entity_id'] = self._generate_entity_id(e['name'])
+                elif 'type' in e:
+                    # 使用类型和计数器生成ID
+                    entity_counter += 1
+                    entity['entity_id'] = f"{self._generate_entity_id(e['type'])}_{entity_counter}"
+                elif 'description' in e:
+                    # 从描述生成ID
+                    entity['entity_id'] = self._generate_entity_id(e['description'][:30])
                 else:
-                    continue
+                    # 最后的后备方案：生成通用ID
+                    entity_counter += 1
+                    entity['entity_id'] = f"entity_{entity_counter}"
+                
+                logger.warning(f"[实体缺少ID，已自动生成] 原始数据: {e}, 生成ID: {entity['entity_id']}")
             
             # 处理 name 字段
             if 'name' in e:
                 entity['name'] = e['name']
             else:
-                logger.warning(f"[实体缺少name] {e}")
-                # 使用 description 或 entity_id 作为 name
+                # 尝试从其他字段推断 name
                 if 'description' in e:
-                    entity['name'] = e['description'][:50]  # 限制长度
+                    # 从描述中提取名称（取前面的部分）
+                    entity['name'] = self._extract_name_from_description(e['description'])
+                elif 'type' in e:
+                    # 使用类型作为名称的一部分
+                    entity['name'] = f"{e['type']}_{entity.get('entity_id', 'unknown')}"
+                elif 'entity_id' in entity:
+                    # 使用ID作为名称
+                    entity['name'] = entity['entity_id'].replace('_', ' ').title()
                 else:
-                    entity['name'] = entity['entity_id']
+                    # 最后的后备方案
+                    entity['name'] = f"未命名实体{entity_counter}"
+                
+                logger.warning(f"[实体缺少name，已自动生成] 原始数据: {e}, 生成name: {entity['name']}")
             
             # 处理 type 字段
-            entity['type'] = e.get('type', '未分类')
+            if 'type' in e:
+                entity['type'] = e['type']
+            else:
+                # 尝试从名称或描述推断类型
+                entity['type'] = self._infer_entity_type(e)
+                logger.warning(f"[实体缺少type，已推断] 原始数据: {e}, 推断type: {entity['type']}")
             
             # 处理 description 字段
-            entity['description'] = e.get('description', entity['name'])
+            if 'description' in e:
+                entity['description'] = e['description']
+            else:
+                # 根据其他字段生成描述
+                parts = []
+                if 'name' in entity:
+                    parts.append(f"名称: {entity['name']}")
+                if 'type' in entity:
+                    parts.append(f"类型: {entity['type']}")
+                
+                if parts:
+                    entity['description'] = "，".join(parts)
+                else:
+                    entity['description'] = "暂无描述"
+                
+                logger.warning(f"[实体缺少description，已生成] 原始数据: {e}, 生成description: {entity['description']}")
             
             # 验证必需字段
             if all(field in entity for field in ['entity_id', 'name', 'type', 'description']):
                 clean_entities.append(entity)
+                logger.debug(f"[实体清洗成功] {entity}")
             else:
-                logger.warning(f"[实体字段不完整] {entity}")
+                logger.error(f"[实体字段不完整，跳过] 原始: {e}, 处理后: {entity}")
         
         return clean_entities
+    
+    def _extract_name_from_description(self, description: str) -> str:
+        """从描述中提取名称"""
+        # 移除常见的描述性词汇
+        desc_words = ['是', '为', '表示', '指', '用于', '描述']
+        
+        # 尝试提取第一个有意义的短语
+        for word in desc_words:
+            if word in description:
+                parts = description.split(word)
+                if len(parts) > 1 and parts[0].strip():
+                    return parts[0].strip()[:30]  # 限制长度
+        
+        # 如果没有找到，返回描述的前30个字符
+        return description[:30].strip()
+    
+    def _infer_entity_type(self, entity_data: Dict) -> str:
+        """根据实体数据推断类型"""
+        # 定义关键词到类型的映射
+        type_keywords = {
+            '材料': ['材料', '薄膜', '基板', '衬底', 'substrate', 'film', 'material'],
+            '方法': ['方法', '处理', '工艺', '技术', 'method', 'process', 'technique'],
+            '参数': ['参数', '数值', '温度', '压力', '时间', 'parameter', 'value', 'temperature'],
+            '设备': ['设备', '仪器', '装置', 'equipment', 'device', 'instrument'],
+            '样品': ['样品', '试样', 'sample', 'specimen'],
+            '结果': ['结果', '性能', '特性', 'result', 'performance', 'property'],
+            '化学物质': ['酸', '碱', '溶液', '化合物', 'acid', 'base', 'solution', 'compound']
+        }
+        
+        # 检查所有可用的文本字段
+        text_to_check = []
+        if 'name' in entity_data:
+            text_to_check.append(entity_data['name'].lower())
+        if 'description' in entity_data:
+            text_to_check.append(entity_data['description'].lower())
+        if 'entity_id' in entity_data:
+            text_to_check.append(entity_data['entity_id'].lower())
+        
+        combined_text = ' '.join(text_to_check)
+        
+        # 检查关键词
+        for entity_type, keywords in type_keywords.items():
+            for keyword in keywords:
+                if keyword.lower() in combined_text:
+                    return entity_type
+        
+        # 默认类型
+        return '其他'
     
     def _generate_entity_id(self, name: str) -> str:
         """从名称生成实体ID"""
