@@ -1,5 +1,6 @@
 """
-WebSailor TCL工业垂域数据集构建核心模块
+WebSailor TCL Domain - Core Module
+基于WebSailor方法论的TCL工业垂域数据集构建核心模块
 """
 
 from .knowledge_graph_builder import KnowledgeGraphBuilder
@@ -11,7 +12,7 @@ from .data_synthesizer import DataSynthesizer
 
 __all__ = [
     'KnowledgeGraphBuilder',
-    'SubgraphSampler',
+    'SubgraphSampler', 
     'QuestionGenerator',
     'ObfuscationProcessor',
     'TrajectoryGenerator',
