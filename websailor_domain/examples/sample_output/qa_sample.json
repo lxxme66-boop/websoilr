@@ -1,0 +1,116 @@
+[
+  {
+    "id": "tcl_qa_sample_001",
+    "question": "这种新型显示技术采用了多少个独立控制单元，它的峰值亮度表现如何？",
+    "answer": "TCL-65Q10G采用的Mini LED背光技术拥有1000个独立控光分区，峰值亮度可达2000尼特。这种精细的分区控制能够实现更精准的局部调光，显著提升画面的对比度和HDR效果。",
+    "original_question": "TCL-65Q10G的Mini LED技术有多少个控光分区，峰值亮度是多少？",
+    "difficulty": 0.6,
+    "question_type": "factual",
+    "language": "zh",
+    "obfuscation_level": 0.5,
+    "obfuscation_techniques": ["entity_replacement", "specification_blur"],
+    "trajectory": {
+      "reasoning_type": "deductive",
+      "steps": [
+        {
+          "step": 1,
+          "action": "识别关键实体",
+          "thought": "题目中提到'这种新型显示技术'，需要从上下文判断具体指什么技术",
+          "result": "根据描述的独立控制单元，推断是Mini LED背光技术"
+        },
+        {
+          "step": 2,
+          "action": "定位相关信息",
+          "thought": "需要找到关于控光分区数量和峰值亮度的具体数据",
+          "result": "在第二段找到相关描述"
+        },
+        {
+          "step": 3,
+          "action": "提取数值信息",
+          "thought": "从文本中提取具体的数值参数",
+          "result": "1000个独立控光分区，2000尼特峰值亮度"
+        },
+        {
+          "step": 4,
+          "action": "综合答案",
+          "thought": "将提取的信息组织成完整的答案，并补充技术优势说明",
+          "result": "形成包含数值和技术优势的完整答案"
+        }
+      ]
+    },
+    "source_subgraph": {
+      "nodes": [
+        {"id": "TCL-65Q10G", "type": "product", "name": "TCL 65英寸Q10G电视"},
+        {"id": "Mini_LED", "type": "technology", "name": "Mini LED背光技术"},
+        {"id": "1000_zones", "type": "parameter", "value": "1000个控光分区"},
+        {"id": "2000_nits", "type": "parameter", "value": "2000尼特"}
+      ],
+      "edges": [
+        {"source": "TCL-65Q10G", "target": "Mini_LED", "type": "采用"},
+        {"source": "Mini_LED", "target": "1000_zones", "type": "具有"},
+        {"source": "Mini_LED", "target": "2000_nits", "type": "达到"}
+      ],
+      "topology": "star",
+      "complexity": 0.65
+    }
+  },
+  {
+    "id": "tcl_qa_sample_002",
+    "question": "某公司的量子点显示设备与传统产品相比，在色彩保持方面有什么优势？这种优势的具体数据是什么？",
+    "answer": "根据实验室测试数据，TCL的量子点电视在色彩保持方面表现优异，其色彩衰减速度比普通LED电视慢30%。这主要得益于量子点材料的稳定性，能够长期保持色彩的准确性和鲜艳度。",
+    "original_question": "TCL量子点电视的色彩衰减速度比普通LED电视慢多少？",
+    "difficulty": 0.7,
+    "question_type": "comparative",
+    "language": "zh",
+    "obfuscation_level": 0.7,
+    "obfuscation_techniques": ["entity_generalization", "context_expansion"],
+    "trajectory": {
+      "reasoning_type": "comparative",
+      "steps": [
+        {
+          "step": 1,
+          "action": "识别比较对象",
+          "thought": "题目提到'某公司的量子点显示设备'和'传统产品'，需要明确具体指什么",
+          "result": "TCL量子点电视 vs 普通LED电视"
+        },
+        {
+          "step": 2,
+          "action": "确定比较维度",
+          "thought": "问题关注'色彩保持方面'，即色彩的长期稳定性",
+          "result": "色彩衰减速度作为比较指标"
+        },
+        {
+          "step": 3,
+          "action": "查找数据支撑",
+          "thought": "需要找到具体的对比数据",
+          "result": "实验室测试显示慢30%"
+        },
+        {
+          "step": 4,
+          "action": "分析原因",
+          "thought": "解释为什么会有这种优势",
+          "result": "量子点材料的稳定性是关键因素"
+        }
+      ]
+    },
+    "source_subgraph": {
+      "nodes": [
+        {"id": "TCL", "type": "company", "name": "TCL公司"},
+        {"id": "QLED", "type": "technology", "name": "量子点技术"},
+        {"id": "LED", "type": "technology", "name": "普通LED技术"},
+        {"id": "color_retention", "type": "feature", "name": "色彩保持"},
+        {"id": "30_percent", "type": "data", "value": "30%改善"}
+      ],
+      "edges": [
+        {"source": "TCL", "target": "QLED", "type": "研发"},
+        {"source": "QLED", "target": "color_retention", "type": "优化"},
+        {"source": "color_retention", "target": "30_percent", "type": "提升"},
+        {"source": "LED", "target": "color_retention", "type": "基准"}
+      ],
+      "topology": "mixed",
+      "complexity": 0.75
+    }
+  },
+  {
+    "id": "tcl_qa_sample_003",
+    "question": "If a manufacturer implements a specialized filt

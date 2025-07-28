@@ -1,14 +1,13 @@
 """
-模糊化处理器 - WebSailor核心模块
-模糊描述中间实体或关系，添加冗余或干扰信息
-使问题信息密度高但精确信息少，增加推理难度
+模糊化处理器
+实现WebSailor的核心思想：模糊描述中间实体或关系
+添加冗余或干扰信息,使问题信息密度高但精确信息少
 """
 
-import json
 import logging
 import random
-import re
 from typing import List, Dict, Tuple, Optional
+import re
 from collections import defaultdict
 
 logger = logging.getLogger(__name__)
@@ -16,451 +15,490 @@ logger = logging.getLogger(__name__)
 
 class ObfuscationProcessor:
     """
-    WebSailor核心：模糊化处理器
-    - 模糊描述中间实体或关系（例如"这位领导人"代指子图中多个可能节点）
-    - 添加冗余或干扰信息，使问题信息密度高但精确信息少
+    模糊化处理器
+    WebSailor核心组件：通过模糊化增加问题的不确定性和推理难度
     """
     
-    def __init__(self, config: dict):
+    def __init__(self, config: Dict):
         self.config = config
-        self.obf_config = config.get('obfuscation', {})
         
-        # 模糊化策略
-        self.strategies = self.obf_config.get('strategies', [])
-        self.obfuscation_rate = self.obf_config.get('obfuscation_rate', 0.6)
+        # 模糊化级别
+        self.obfuscation_levels = config['data_settings'].get(
+            'obfuscation_levels', 
+            [0.2, 0.4, 0.6]
+        )
         
-        # 模糊化模式
-        self.entity_patterns = self.obf_config['patterns']['entity_patterns']
-        self.relation_patterns = self.obf_config['patterns']['relation_patterns']
+        # 初始化模糊化模板
+        self._init_obfuscation_patterns()
         
-        # TCL特定配置
-        self.tcl_config = config.get('tcl_specific', {})
-        
-        # 初始化模糊化词典
-        self._init_obfuscation_dict()
-        
-    def _init_obfuscation_dict(self):
-        """初始化模糊化词典"""
-        # 实体类型的模糊表达
-        self.entity_obfuscations = {
-            '产品': ['这种产品', '某个产品', '相关产品', '该产品', '此类产品'],
-            '技术': ['这项技术', '某种技术', '相关技术', '该技术', '此类技术'],
-            '工艺': ['这种工艺', '某个工艺', '相关工艺', '该工艺', '此类工艺'],
-            '材料': ['这种材料', '某种材料', '相关材料', '该材料', '此类材料'],
-            '设备': ['这种设备', '某个设备', '相关设备', '该设备', '此类设备'],
-            '公司': ['这家公司', '某个企业', '相关企业', '该公司', '此类企业'],
-            '人员': ['这位专家', '某位人员', '相关人员', '该人员', '此类专家'],
-            '标准': ['这项标准', '某个标准', '相关标准', '该标准', '此类标准'],
-            '专利': ['这项专利', '某个专利', '相关专利', '该专利', '此类专利'],
-            '项目': ['这个项目', '某个项目', '相关项目', '该项目', '此类项目']
-        }
-        
-        # 关系的模糊表达
-        self.relation_obfuscations = {
-            '使用': ['采用了', '应用了', '利用了', '涉及到', '与...有关'],
-            '包含': ['包括', '含有', '涉及', '关联到', '相关于'],
-            '生产': ['制造', '产出', '创造', '形成', '产生'],
-            '研发': ['开发', '研究', '探索', '创新', '发展'],
-            '依赖': ['需要', '基于', '依靠', '关联于', '相关于'],
-            '改进': ['优化', '提升', '改善', '增强', '发展'],
-            '替代': ['取代', '代替', '更换', '转换', '改变'],
-            '认证': ['认可', '批准', '验证', '确认', '评定'],
-            '合作': ['协作', '联合', '共同', '协同', '联系'],
-            '应用于': ['用于', '适用于', '服务于', '面向', '针对']
-        }
-        
-        # 干扰词汇库
-        self.distractor_words = {
-            'zh_cn': {
-                'connectors': ['并且', '同时', '另外', '此外', '而且', '以及'],
-                'qualifiers': ['可能', '也许', '大概', '似乎', '据说', '一般来说'],
-                'fillers': ['在某种程度上', '从某个角度看', '在特定条件下', '根据相关资料'],
-                'vague_refs': ['前面提到的', '之前说的', '相关的', '类似的', '对应的']
+    def _init_obfuscation_patterns(self):
+        """初始化模糊化模式"""
+        # 实体模糊化模板
+        self.entity_patterns = {
+            'zh': {
+                '产品': ['这种产品', '某个产品', '相关产品', '该产品', '一种产品'],
+                '技术': ['这项技术', '某种技术', '相关技术', '该技术', '一种技术'],
+                '材料': ['这种材料', '某种材料', '相关材料', '该材料', '一种材料'],
+                '设备': ['这台设备', '某个设备', '相关设备', '该设备', '一种设备'],
+                '公司': ['这家公司', '某公司', '相关企业', '该企业', '一家公司'],
+                '工艺': ['这种工艺', '某个工艺', '相关工艺', '该工艺', '一种工艺'],
+                'default': ['这个{TYPE}', '某个{TYPE}', '相关的{TYPE}', '该{TYPE}', '一种{TYPE}']
             },
             'en': {
-                'connectors': ['and', 'also', 'moreover', 'furthermore', 'additionally'],
-                'qualifiers': ['possibly', 'perhaps', 'probably', 'seemingly', 'reportedly'],
-                'fillers': ['to some extent', 'from a certain perspective', 'under specific conditions'],
-                'vague_refs': ['the aforementioned', 'the related', 'the similar', 'the corresponding']
+                '产品': ['this product', 'a certain product', 'related product', 'the product', 'a product'],
+                '技术': ['this technology', 'a certain technology', 'related technology', 'the technology', 'a technology'],
+                '材料': ['this material', 'a certain material', 'related material', 'the material', 'a material'],
+                '设备': ['this equipment', 'certain equipment', 'related equipment', 'the equipment', 'an equipment'],
+                '公司': ['this company', 'a certain company', 'related enterprise', 'the enterprise', 'a company'],
+                '工艺': ['this process', 'a certain process', 'related process', 'the process', 'a process'],
+                'default': ['this {TYPE}', 'a certain {TYPE}', 'related {TYPE}', 'the {TYPE}', 'a {TYPE}']
             }
         }
         
-    def process_qa_pairs(self, qa_pairs: List[Dict]) -> List[Dict]:
-        """处理QA对，应用模糊化"""
-        obfuscated_pairs = []
+        # 关系模糊化模板
+        self.relation_patterns = {
+            'zh': {
+                '使用': ['与...有关', '涉及到', '关联于', '相关的', '存在某种联系'],
+                '包含': ['涉及', '相关', '包括某些', '有关于', '存在关联'],
+                '生产': ['相关于', '涉及到', '有关', '存在联系', '相关的'],
+                '研发': ['开展相关工作', '进行某些活动', '有所涉及', '存在关联', '相关研究'],
+                '依赖': ['需要', '相关', '有所关联', '存在某种关系', '涉及到'],
+                'default': ['与...有关', '涉及到', '关联于', '相关的', '存在某种联系']
+            },
+            'en': {
+                '使用': ['related to', 'involves', 'associated with', 'connected to', 'has some connection'],
+                '包含': ['involves', 'related', 'includes some', 'concerning', 'has association'],
+                '生产': ['related to', 'involves', 'concerning', 'has connection', 'associated'],
+                '研发': ['conducts related work', 'performs activities', 'has involvement', 'has association', 'related research'],
+                '依赖': ['requires', 'related', 'has association', 'has some relationship', 'involves'],
+                'default': ['related to', 'involves', 'associated with', 'connected to', 'has some connection']
+            }
+        }
         
-        for qa in qa_pairs:
-            # 决定是否应用模糊化
-            if random.random() < self.obfuscation_rate:
-                obfuscated_qa = self._obfuscate_qa_pair(qa)
-                obfuscated_pairs.append(obfuscated_qa)
+        # 干扰信息模板
+        self.noise_templates = {
+            'zh': [
+                "值得注意的是，{noise_fact}。",
+                "另外，{noise_fact}也是需要考虑的因素。",
+                "同时，{noise_fact}可能会产生影响。",
+                "此外，还存在{noise_fact}的情况。",
+                "需要说明的是，{noise_fact}。"
+            ],
+            'en': [
+                "It's worth noting that {noise_fact}.",
+                "Additionally, {noise_fact} is also a factor to consider.",
+                "Meanwhile, {noise_fact} may have an impact.",
+                "Furthermore, there is {noise_fact}.",
+                "It should be noted that {noise_fact}."
+            ]
+        }
+        
+        # TCL垂域干扰事实
+        self.noise_facts = {
+            'zh': [
+                "行业标准在不断更新",
+                "技术发展具有不确定性",
+                "市场需求在持续变化",
+                "存在多种技术路线",
+                "不同应用场景有不同要求",
+                "成本因素需要综合考虑",
+                "环保要求日益严格",
+                "国际竞争日趋激烈"
+            ],
+            'en': [
+                "industry standards are constantly updating",
+                "technological development has uncertainties",
+                "market demand is continuously changing",
+                "multiple technical routes exist",
+                "different application scenarios have different requirements",
+                "cost factors need comprehensive consideration",
+                "environmental requirements are increasingly strict",
+                "international competition is intensifying"
+            ]
+        }
+        
+    def obfuscate_questions(self, questions: List[Dict], 
+                           target_level: Optional[float] = None) -> List[Dict]:
+        """
+        对问题进行模糊化处理
+        
+        Args:
+            questions: 原始问题列表
+            target_level: 目标模糊化级别（0-1）
+            
+        Returns:
+            List[Dict]: 模糊化后的问题列表
+        """
+        logger.info(f"开始对{len(questions)}个问题进行模糊化处理...")
+        
+        obfuscated_questions = []
+        
+        for question in questions:
+            # 确定模糊化级别
+            if target_level is None:
+                level = random.choice(self.obfuscation_levels)
             else:
-                # 保留一些清晰的问题作为对比
-                obfuscated_pairs.append(qa)
+                level = target_level
+                
+            # 根据问题类型和难度调整级别
+            adjusted_level = self._adjust_obfuscation_level(question, level)
+            
+            # 执行模糊化
+            obfuscated = self._obfuscate_single_question(question, adjusted_level)
+            obfuscated_questions.append(obfuscated)
+            
+        logger.info(f"模糊化处理完成，共处理{len(obfuscated_questions)}个问题")
+        return obfuscated_questions
         
-        logger.info(f"模糊化处理完成: {len(obfuscated_pairs)} 个QA对")
+    def _adjust_obfuscation_level(self, question: Dict, base_level: float) -> float:
+        """
+        根据问题特征调整模糊化级别
+        WebSailor思想：不同类型的问题需要不同程度的模糊化
+        """
+        q_type = question.get('type', 'factual')
+        difficulty = question.get('difficulty', 0.5)
         
-        return obfuscated_pairs
-    
-    def _obfuscate_qa_pair(self, qa: Dict) -> Dict:
-        """对单个QA对应用模糊化"""
-        # 复制原始QA对
-        obf_qa = qa.copy()
+        # 根据问题类型调整
+        type_adjustments = {
+            'factual': -0.1,      # 事实类问题减少模糊化
+            'reasoning': 0.1,     # 推理类问题增加模糊化
+            'multi_hop': 0.2,     # 多跳问题大幅增加模糊化
+            'comparative': 0.0,   # 比较类问题保持不变
+            'causal': 0.15        # 因果类问题增加模糊化
+        }
         
-        # 选择模糊化策略
-        strategies = random.sample(
-            self.strategies, 
-            k=min(len(self.strategies), random.randint(1, 3))
+        adjustment = type_adjustments.get(q_type, 0.0)
+        
+        # 根据难度调整
+        if difficulty > 0.7:
+            adjustment += 0.1
+        elif difficulty < 0.3:
+            adjustment -= 0.1
+            
+        # 确保在合理范围内
+        return max(0.1, min(0.9, base_level + adjustment))
+        
+    def _obfuscate_single_question(self, question: Dict, level: float) -> Dict:
+        """
+        对单个问题进行模糊化
+        """
+        obfuscated = question.copy()
+        
+        # 获取语言
+        lang = question.get('language', 'zh')
+        
+        # 1. 实体模糊化
+        obfuscated['question'] = self._obfuscate_entities(
+            question['question'], 
+            question.get('entities', []),
+            level,
+            lang
         )
         
-        # 应用各种模糊化策略
-        for strategy in strategies:
-            if strategy == 'entity_replacement':
-                obf_qa = self._apply_entity_replacement(obf_qa)
-            elif strategy == 'relation_paraphrase':
-                obf_qa = self._apply_relation_paraphrase(obf_qa)
-            elif strategy == 'redundancy_injection':
-                obf_qa = self._apply_redundancy_injection(obf_qa)
-            elif strategy == 'ambiguity_introduction':
-                obf_qa = self._apply_ambiguity_introduction(obf_qa)
-            elif strategy == 'context_mixing':
-                obf_qa = self._apply_context_mixing(obf_qa)
+        # 2. 关系模糊化（如果有）
+        if 'relations' in question:
+            obfuscated['question'] = self._obfuscate_relations(
+                obfuscated['question'],
+                question['relations'],
+                level,
+                lang
+            )
+            
+        # 3. 添加干扰信息
+        if random.random() < level:
+            obfuscated['question'] = self._add_noise(
+                obfuscated['question'],
+                lang
+            )
+            
+        # 4. 答案模糊化（部分模糊）
+        if 'answer' in question and random.random() < level * 0.5:
+            obfuscated['answer'] = self._obfuscate_answer(
+                question['answer'],
+                level,
+                lang
+            )
+            
+        # 记录模糊化信息
+        obfuscated['obfuscation_level'] = level
+        obfuscated['obfuscation_types'] = self._get_applied_obfuscations(
+            question, obfuscated
+        )
         
-        # 记录应用的策略
-        obf_qa['obfuscation_strategies'] = strategies
-        obf_qa['is_obfuscated'] = True
+        return obfuscated
         
-        return obf_qa
-    
-    def _apply_entity_replacement(self, qa: Dict) -> Dict:
-        """应用实体替换策略"""
-        question = qa['question']
-        evidence = qa.get('evidence', {})
+    def _obfuscate_entities(self, text: str, entities: List[str], 
+                           level: float, lang: str) -> str:
+        """
+        实体模糊化
+        WebSailor核心：用模糊描述替换具体实体
+        """
+        obfuscated_text = text
         
-        # 获取问题中的实体
-        entities = evidence.get('nodes', [])
+        # 统计实体类型
+        entity_types = self._identify_entity_types(entities)
+        
+        # 根据级别决定模糊化的实体数量
+        num_to_obfuscate = int(len(entities) * level)
+        entities_to_obfuscate = random.sample(entities, num_to_obfuscate) if entities else []
+        
+        for entity in entities_to_obfuscate:
+            # 获取实体类型
+            entity_type = entity_types.get(entity, 'default')
+            
+            # 选择模糊化模式
+            patterns = self.entity_patterns[lang].get(
+                entity_type, 
+                self.entity_patterns[lang]['default']
+            )
+            pattern = random.choice(patterns)
+            
+            # 如果是默认模式，需要填充类型
+            if '{TYPE}' in pattern:
+                pattern = pattern.format(TYPE=entity_type)
+                
+            # 执行替换
+            # 使用正则确保完整匹配
+            obfuscated_text = re.sub(
+                r'\b' + re.escape(entity) + r'\b',
+                pattern,
+                obfuscated_text
+            )
+            
+        return obfuscated_text
+        
+    def _obfuscate_relations(self, text: str, relations: List[str], 
+                            level: float, lang: str) -> str:
+        """
+        关系模糊化
+        """
+        obfuscated_text = text
+        
+        # 根据级别决定模糊化的关系数量
+        num_to_obfuscate = int(len(relations) * level)
+        relations_to_obfuscate = random.sample(relations, num_to_obfuscate) if relations else []
+        
+        for relation in relations_to_obfuscate:
+            # 选择模糊化模式
+            patterns = self.relation_patterns[lang].get(
+                relation,
+                self.relation_patterns[lang]['default']
+            )
+            pattern = random.choice(patterns)
+            
+            # 执行替换
+            if relation in obfuscated_text:
+                obfuscated_text = obfuscated_text.replace(relation, pattern)
+                
+        return obfuscated_text
+        
+    def _add_noise(self, text: str, lang: str) -> str:
+        """
+        添加干扰信息
+        WebSailor核心：增加信息密度但减少精确信息
+        """
+        # 选择噪声模板
+        template = random.choice(self.noise_templates[lang])
+        
+        # 选择噪声事实
+        noise_fact = random.choice(self.noise_facts[lang])
+        
+        # 生成噪声句子
+        noise_sentence = template.format(noise_fact=noise_fact)
+        
+        # 决定插入位置
+        sentences = self._split_sentences(text)
+        if len(sentences) > 1:
+            # 在中间插入
+            insert_pos = random.randint(1, len(sentences) - 1)
+            sentences.insert(insert_pos, noise_sentence)
+        else:
+            # 在末尾添加
+            sentences.append(noise_sentence)
+            
+        # 重新组合
+        if lang == 'zh':
+            return ''.join(sentences)
+        else:
+            return ' '.join(sentences)
+            
+    def _obfuscate_answer(self, answer: str, level: float, lang: str) -> str:
+        """
+        答案模糊化（轻度）
+        保持答案的正确性，但增加一些不确定性表达
+        """
+        # 不确定性前缀
+        uncertainty_prefixes = {
+            'zh': [
+                "根据现有信息，",
+                "一般来说，",
+                "通常情况下，",
+                "可能是",
+                "据了解，"
+            ],
+            'en': [
+                "Based on available information, ",
+                "Generally speaking, ",
+                "Typically, ",
+                "It might be ",
+                "As far as we know, "
+            ]
+        }
+        
+        # 不确定性后缀
+        uncertainty_suffixes = {
+            'zh': [
+                "，但具体情况可能有所不同。",
+                "，需要根据实际情况判断。",
+                "，这是一般性的理解。",
+                "，但可能存在其他因素。",
+                "，仅供参考。"
+            ],
+            'en': [
+                ", but specific situations may vary.",
+                ", needs to be judged based on actual circumstances.",
+                ", this is a general understanding.",
+                ", but other factors may exist.",
+                ", for reference only."
+            ]
+        }
+        
+        # 根据级别决定是否添加不确定性
+        if random.random() < level * 0.7:
+            # 添加前缀
+            if random.random() < 0.5:
+                prefix = random.choice(uncertainty_prefixes[lang])
+                answer = prefix + answer
+                
+            # 添加后缀
+            if random.random() < 0.5:
+                suffix = random.choice(uncertainty_suffixes[lang])
+                answer = answer + suffix
+                
+        return answer
+        
+    def _identify_entity_types(self, entities: List[str]) -> Dict[str, str]:
+        """
+        识别实体类型
+        简化版本，实际应该从知识图谱中获取
+        """
+        entity_types = {}
+        
+        # TCL垂域关键词映射
+        type_keywords = {
+            '产品': ['产品', '系列', '型号', 'TCL', 'Q10G', 'X11G'],
+            '技术': ['技术', '算法', 'AI', '智能', 'Mini-LED', 'QLED'],
+            '材料': ['材料', '基板', '涂层', '薄膜', '玻璃'],
+            '设备': ['设备', '生产线', '机器', '系统', '平台'],
+            '公司': ['公司', '企业', '集团', 'TCL', '华星'],
+            '工艺': ['工艺', '流程', '制程', '方法', '步骤']
+        }
         
         for entity in entities:
-            entity_id = entity['id']
-            entity_type = entity['type']
+            entity_type = 'default'
             
-            # 检查实体是否在问题中
-            if entity_id in question:
-                # 选择模糊表达
-                if entity_type in self.entity_obfuscations:
-                    obfuscations = self.entity_obfuscations[entity_type]
-                    obf_expression = random.choice(obfuscations)
+            # 基于关键词匹配
+            for type_name, keywords in type_keywords.items():
+                if any(keyword in entity for keyword in keywords):
+                    entity_type = type_name
+                    break
                     
-                    # 替换实体
-                    # 保留第一次出现，后续使用模糊表达
-                    first_occurrence = question.find(entity_id)
-                    if question.count(entity_id) > 1:
-                        # 替换除第一次外的所有出现
-                        parts = question.split(entity_id)
-                        new_question = parts[0] + entity_id
-                        for i in range(1, len(parts)):
-                            if i == len(parts) - 1:
-                                new_question += parts[i]
-                            else:
-                                new_question += obf_expression + parts[i]
-                        question = new_question
-                    else:
-                        # 如果只出现一次，有50%概率替换
-                        if random.random() < 0.5:
-                            question = question.replace(entity_id, obf_expression)
-        
-        qa['question'] = question
-        qa['obfuscation_details'] = qa.get('obfuscation_details', [])
-        qa['obfuscation_details'].append({
-            'strategy': 'entity_replacement',
-            'description': '实体被模糊化表达替换'
-        })
-        
-        return qa
-    
-    def _apply_relation_paraphrase(self, qa: Dict) -> Dict:
-        """应用关系改写策略"""
-        question = qa['question']
-        evidence = qa.get('evidence', {})
-        
-        # 获取问题中的关系
-        edges = evidence.get('edges', [])
-        
-        for edge in edges:
-            relation = edge['relation']
+            entity_types[entity] = entity_type
             
-            # 检查关系词是否在问题中
-            if relation in question and relation in self.relation_obfuscations:
-                obfuscations = self.relation_obfuscations[relation]
-                obf_relation = random.choice(obfuscations)
-                
-                # 替换关系词
-                question = question.replace(relation, obf_relation)
+        return entity_types
         
-        qa['question'] = question
-        qa['obfuscation_details'] = qa.get('obfuscation_details', [])
-        qa['obfuscation_details'].append({
-            'strategy': 'relation_paraphrase',
-            'description': '关系词被改写为更模糊的表达'
-        })
-        
-        return qa
-    
-    def _apply_redundancy_injection(self, qa: Dict) -> Dict:
-        """注入冗余信息"""
-        question = qa['question']
-        lang = qa.get('language', 'zh_cn')
-        
-        # 获取干扰词汇
-        distractors = self.distractor_words.get(lang, self.distractor_words['zh_cn'])
-        
-        # 添加连接词
-        if random.random() < 0.7:
-            connector = random.choice(distractors['connectors'])
-            # 在句子中间插入连接词
-            parts = self._split_question_smartly(question)
-            if len(parts) > 1:
-                insert_pos = random.randint(1, len(parts) - 1)
-                parts.insert(insert_pos, connector)
-                question = ' '.join(parts)
-        
-        # 添加限定词
-        if random.random() < 0.6:
-            qualifier = random.choice(distractors['qualifiers'])
-            question = qualifier + '，' + question
-        
-        # 添加填充词
-        if random.random() < 0.5:
-            filler = random.choice(distractors['fillers'])
-            question = question.rstrip('？?') + '，' + filler + '？'
-        
-        qa['question'] = question
-        qa['obfuscation_details'] = qa.get('obfuscation_details', [])
-        qa['obfuscation_details'].append({
-            'strategy': 'redundancy_injection',
-            'description': '注入了冗余词汇和短语'
-        })
-        
-        return qa
-    
-    def _apply_ambiguity_introduction(self, qa: Dict) -> Dict:
-        """引入歧义"""
-        question = qa['question']
-        lang = qa.get('language', 'zh_cn')
-        subgraph = qa.get('subgraph', {})
-        
-        # 策略1：添加模糊指代
-        vague_refs = self.distractor_words[lang]['vague_refs']
-        
-        # 找到问题中的具体实体
-        entities_in_question = self._extract_entities_from_question(question, subgraph)
-        
-        if entities_in_question and random.random() < 0.7:
-            # 选择一个实体进行模糊化
-            entity_to_obfuscate = random.choice(entities_in_question)
-            vague_ref = random.choice(vague_refs)
-            
-            # 创建模糊指代
-            if lang == 'zh_cn':
-                vague_expression = f"{vague_ref}{self._get_entity_type_name_zh(entity_to_obfuscate['type'])}"
-            else:
-                vague_expression = f"{vague_ref} {self._get_entity_type_name_en(entity_to_obfuscate['type'])}"
-            
-            # 替换实体
-            question = question.replace(entity_to_obfuscate['id'], vague_expression, 1)
-        
-        # 策略2：添加多个可能的指代对象
-        if random.random() < 0.5:
-            question = self._add_multiple_referents(question, subgraph, lang)
-        
-        qa['question'] = question
-        qa['obfuscation_details'] = qa.get('obfuscation_details', [])
-        qa['obfuscation_details'].append({
-            'strategy': 'ambiguity_introduction',
-            'description': '引入了模糊指代和歧义'
-        })
-        
-        return qa
-    
-    def _apply_context_mixing(self, qa: Dict) -> Dict:
-        """混合上下文信息"""
-        question = qa['question']
-        subgraph = qa.get('subgraph', {})
-        lang = qa.get('language', 'zh_cn')
-        
-        # 从子图中提取额外的上下文信息
-        extra_context = self._extract_extra_context(subgraph, qa['evidence'])
-        
-        if extra_context:
-            # 将额外上下文编织到问题中
-            context_phrase = self._create_context_phrase(extra_context, lang)
-            
-            # 在问题开头或中间插入上下文
-            if random.random() < 0.5:
-                question = context_phrase + '，' + question
-            else:
-                # 在问题中间插入
-                parts = self._split_question_smartly(question)
-                if len(parts) > 1:
-                    insert_pos = random.randint(1, len(parts) - 1)
-                    parts.insert(insert_pos, '，' + context_phrase + '，')
-                    question = ''.join(parts)
-        
-        qa['question'] = question
-        qa['obfuscation_details'] = qa.get('obfuscation_details', [])
-        qa['obfuscation_details'].append({
-            'strategy': 'context_mixing',
-            'description': '混入了额外的上下文信息'
-        })
-        
-        return qa
-    
-    def _split_question_smartly(self, question: str) -> List[str]:
-        """智能分割问题"""
-        # 基于标点和关键词分割
-        # 保留简单实现
-        parts = []
-        
-        # 尝试按逗号分割
-        if '，' in question:
-            parts = question.split('，')
-        elif ',' in question:
-            parts = question.split(',')
+    def _split_sentences(self, text: str) -> List[str]:
+        """分句"""
+        # 中文分句
+        if any('\u4e00' <= c <= '\u9fff' for c in text):
+            sentences = re.split(r'[。！？]', text)
+            # 保留标点
+            result = []
+            for i, sent in enumerate(sentences[:-1]):
+                if sent:
+                    result.append(sent + text[text.find(sent) + len(sent)])
+            if sentences[-1]:
+                result.append(sentences[-1])
+            return result
         else:
-            # 按空格分割（英文）或按字符长度分割（中文）
-            if any(c.isalpha() and ord(c) < 128 for c in question):
-                # 英文
-                words = question.split()
-                if len(words) > 4:
-                    mid = len(words) // 2
-                    parts = [' '.join(words[:mid]), ' '.join(words[mid:])]
-                else:
-                    parts = [question]
-            else:
-                # 中文
-                if len(question) > 10:
-                    mid = len(question) // 2
-                    parts = [question[:mid], question[mid:]]
-                else:
-                    parts = [question]
-        
-        return parts
-    
-    def _extract_entities_from_question(self, question: str, 
-                                      subgraph: Dict) -> List[Dict]:
-        """从问题中提取实体"""
-        entities = []
-        
-        for node in subgraph.get('nodes', []):
-            if node['id'] in question:
-                entities.append(node)
-        
-        return entities
-    
-    def _get_entity_type_name_zh(self, entity_type: str) -> str:
-        """获取实体类型的中文名称"""
-        type_names = {
-            '产品': '产品',
-            '技术': '技术',
-            '工艺': '工艺',
-            '材料': '材料',
-            '设备': '设备',
-            '公司': '企业',
-            '人员': '人员',
-            '标准': '标准',
-            '专利': '专利',
-            '项目': '项目'
-        }
-        return type_names.get(entity_type, '对象')
-    
-    def _get_entity_type_name_en(self, entity_type: str) -> str:
-        """获取实体类型的英文名称"""
-        type_names = {
-            '产品': 'product',
-            '技术': 'technology',
-            '工艺': 'process',
-            '材料': 'material',
-            '设备': 'equipment',
-            '公司': 'company',
-            '人员': 'person',
-            '标准': 'standard',
-            '专利': 'patent',
-            '项目': 'project'
-        }
-        return type_names.get(entity_type, 'entity')
-    
-    def _add_multiple_referents(self, question: str, subgraph: Dict, 
-                              lang: str) -> str:
-        """添加多个可能的指代对象"""
-        # 找到子图中相同类型的实体
-        entity_groups = defaultdict(list)
-        for node in subgraph.get('nodes', []):
-            entity_groups[node['type']].append(node)
-        
-        # 找到有多个实例的类型
-        multi_instance_types = {k: v for k, v in entity_groups.items() if len(v) > 1}
-        
-        if multi_instance_types:
-            # 随机选择一个类型
-            selected_type = random.choice(list(multi_instance_types.keys()))
-            entities = multi_instance_types[selected_type]
+            # 英文分句
+            sentences = re.split(r'[.!?]', text)
+            # 保留标点
+            result = []
+            for i, sent in enumerate(sentences[:-1]):
+                if sent.strip():
+                    result.append(sent.strip() + text[text.find(sent) + len(sent)])
+            if sentences[-1].strip():
+                result.append(sentences[-1].strip())
+            return result
             
-            # 创建包含多个实体的短语
-            if lang == 'zh_cn':
-                entity_list = '、'.join([e['id'] for e in entities[:3]])
-                phrase = f"在{entity_list}等{self._get_entity_type_name_zh(selected_type)}中"
-            else:
-                entity_list = ', '.join([e['id'] for e in entities[:3]])
-                phrase = f"among {self._get_entity_type_name_en(selected_type)}s like {entity_list}"
-            
-            # 在问题开头添加这个短语
-            question = phrase + '，' + question
+    def _get_applied_obfuscations(self, original: Dict, obfuscated: Dict) -> List[str]:
+        """
+        记录应用的模糊化类型
+        """
+        applied = []
         
-        return question
-    
-    def _extract_extra_context(self, subgraph: Dict, evidence: Dict) -> Dict:
-        """提取额外的上下文信息"""
-        extra_context = {
-            'nodes': [],
-            'edges': []
+        # 检查实体模糊化
+        if original['question'] != obfuscated['question']:
+            if any(entity not in obfuscated['question'] 
+                   for entity in original.get('entities', [])):
+                applied.append('entity_obfuscation')
+                
+        # 检查关系模糊化
+        if 'relations' in original:
+            if any(relation not in obfuscated['question'] 
+                   for relation in original['relations']):
+                applied.append('relation_obfuscation')
+                
+        # 检查噪声添加
+        if len(obfuscated['question']) > len(original['question']) * 1.2:
+            applied.append('noise_injection')
+            
+        # 检查答案模糊化
+        if original.get('answer', '') != obfuscated.get('answer', ''):
+            applied.append('answer_uncertainty')
+            
+        return applied
+        
+    def analyze_obfuscation_impact(self, 
+                                  original_questions: List[Dict],
+                                  obfuscated_questions: List[Dict]) -> Dict:
+        """
+        分析模糊化的影响
+        """
+        analysis = {
+            'total_questions': len(original_questions),
+            'obfuscation_stats': defaultdict(int),
+            'average_text_expansion': 0,
+            'entity_obfuscation_rate': 0,
+            'relation_obfuscation_rate': 0
         }
         
-        # 获取证据中已使用的节点和边
-        used_nodes = {n['id'] for n in evidence.get('nodes', [])}
-        used_edges = {(e['source'], e['target']) for e in evidence.get('edges', [])}
+        total_expansion = 0
+        total_entities = 0
+        obfuscated_entities = 0
         
-        # 找到未使用的节点和边
-        for node in subgraph.get('nodes', []):
-            if node['id'] not in used_nodes:
-                extra_context['nodes'].append(node)
-                if len(extra_context['nodes']) >= 2:
-                    break
+        for orig, obfusc in zip(original_questions, obfuscated_questions):
+            # 统计模糊化类型
+            for obf_type in obfusc.get('obfuscation_types', []):
+                analysis['obfuscation_stats'][obf_type] += 1
+                
+            # 计算文本膨胀率
+            orig_len = len(orig['question'])
+            obfusc_len = len(obfusc['question'])
+            total_expansion += (obfusc_len - orig_len) / orig_len
+            
+            # 统计实体模糊化率
+            orig_entities = orig.get('entities', [])
+            total_entities += len(orig_entities)
+            for entity in orig_entities:
+                if entity not in obfusc['question']:
+                    obfuscated_entities += 1
+                    
+        # 计算平均值
+        analysis['average_text_expansion'] = total_expansion / len(original_questions)
+        analysis['entity_obfuscation_rate'] = (
+            obfuscated_entities / total_entities if total_entities > 0 else 0
+        )
         
-        for edge in subgraph.get('edges', []):
-            edge_tuple = (edge['source'], edge['target'])
-            if edge_tuple not in used_edges:
-                extra_context['edges'].append(edge)
-                if len(extra_context['edges']) >= 1:
-                    break
-        
-        return extra_context if (extra_context['nodes'] or extra_context['edges']) else None
-    
-    def _create_context_phrase(self, context: Dict, lang: str) -> str:
-        """创建上下文短语"""
-        phrases = []
-        
-        if context['nodes']:
-            node = context['nodes'][0]
-            if lang == 'zh_cn':
-                phrases.append(f"考虑到{node['id']}的存在")
-            else:
-                phrases.append(f"considering the presence of {node['id']}")
-        
-        if context['edges']:
-            edge = context['edges'][0]
-            if lang == 'zh_cn':
-                phrases.append(f"鉴于{edge['source']}与{edge['target']}的关系")
-            else:
-                phrases.append(f"given the relationship between {edge['source']} and {edge['target']}")
-        
-        return random.choice(phrases) if phrases else ""
+        return analysis

@@ -1,500 +1,464 @@
 """
-子图采样器 - WebSailor核心模块
-从知识图谱中采样不同拓扑结构的子图，每个子图代表一种"任务场景"
+子图采样器
+实现WebSailor的核心思想：从整个知识图中抽取不同拓扑的子图作为问题候选基础
+每个子图代表了一种"任务场景"：可能包含多个目标、干扰信息、隐含路径
 """
 
-import json
 import logging
 import random
-from pathlib import Path
-from typing import List, Dict, Set, Tuple
-import networkx as nx
-from tqdm import tqdm
-import numpy as np
+from typing import List, Dict, Set, Tuple, Optional
 from collections import defaultdict
+import networkx as nx
+import numpy as np
+from tqdm import tqdm
+import community as community_louvain
 
 logger = logging.getLogger(__name__)
 
 
 class SubgraphSampler:
     """
-    WebSailor核心：子图采样器
-    从整个知识图中抽取不同拓扑的子图作为问题候选基础
-    每个子图代表了一种"任务场景"：可能包含多个目标、干扰信息、隐含路径
+    子图采样器
+    WebSailor核心组件：通过采样不同拓扑结构的子图来创建多样化的问题场景
     """
     
-    def __init__(self, config: dict):
+    def __init__(self, config: Dict):
         self.config = config
-        self.sampling_config = config.get('subgraph_sampling', {})
-        
-        # 拓扑类型
-        self.topology_types = self.sampling_config.get('topology_types', [])
+        self.data_settings = config.get('data_settings', {})
         
         # 子图大小限制
-        self.min_nodes = self.sampling_config['subgraph_sizes']['min_nodes']
-        self.max_nodes = self.sampling_config['subgraph_sizes']['max_nodes']
-        self.min_edges = self.sampling_config['subgraph_sizes']['min_edges']
-        self.max_edges = self.sampling_config['subgraph_sizes']['max_edges']
+        self.min_size = self.data_settings.get('min_subgraph_size', 5)
+        self.max_size = self.data_settings.get('max_subgraph_size', 50)
         
         # 采样策略
-        self.sampling_strategies = self.sampling_config.get('sampling_strategies', [])
+        self.sampling_strategies = self.data_settings.get(
+            'subgraph_sampling_strategies', 
+            ['random_walk', 'bfs', 'community_based']
+        )
         
-    def sample_diverse_subgraphs(self, graph: nx.MultiDiGraph, 
-                                num_samples: int) -> List[Dict]:
+        # 拓扑类型
+        self.topology_types = [
+            'chain',      # 链式：A->B->C->D
+            'star',       # 星型：中心节点连接多个周边节点
+            'tree',       # 树形：层次结构
+            'cycle',      # 环形：包含循环
+            'mixed',      # 混合：复杂拓扑
+            'dense',      # 密集：高连接度
+            'sparse'      # 稀疏：低连接度
+        ]
+        
+    def sample_subgraphs(self, kg: nx.DiGraph, num_samples: int = 1000) -> List[nx.DiGraph]:
         """
-        采样多样化的子图
-        确保采样的子图具有不同的拓扑结构，增加数据集的多样性
-        """
-        logger.info(f"开始从知识图谱采样 {num_samples} 个子图...")
+        从知识图谱中采样多个子图
         
-        subgraphs = []
-        samples_per_topology = num_samples // len(self.topology_types)
-        
-        # 为每种拓扑类型采样
-        for topology in self.topology_types:
-            logger.info(f"采样 {topology} 类型子图...")
+        Args:
+            kg: 输入的知识图谱
+            num_samples: 需要采样的子图数量
             
-            topology_subgraphs = self._sample_topology_subgraphs(
-                graph, topology, samples_per_topology
-            )
-            subgraphs.extend(topology_subgraphs)
+        Returns:
+            List[nx.DiGraph]: 采样得到的子图列表
+        """
+        logger.info(f"开始从知识图谱中采样{num_samples}个子图...")
         
-        # 如果还需要更多样本，随机采样
-        while len(subgraphs) < num_samples:
-            strategy = random.choice(self.sampling_strategies)
-            subgraph = self._sample_subgraph(graph, strategy)
-            if subgraph:
-                subgraphs.append(subgraph)
-        
-        logger.info(f"子图采样完成，共采样 {len(subgraphs)} 个子图")
-        
-        # 分析子图统计信息
-        self._analyze_subgraphs(subgraphs)
-        
-        return subgraphs[:num_samples]
-    
-    def _sample_topology_subgraphs(self, graph: nx.MultiDiGraph, 
-                                  topology: str, num_samples: int) -> List[Dict]:
-        """根据特定拓扑类型采样子图"""
         subgraphs = []
+        samples_per_strategy = num_samples // len(self.sampling_strategies)
         
-        for _ in range(num_samples):
-            if topology == "chain":
-                subgraph = self._sample_chain_subgraph(graph)
-            elif topology == "star":
-                subgraph = self._sample_star_subgraph(graph)
-            elif topology == "tree":
-                subgraph = self._sample_tree_subgraph(graph)
-            elif topology == "cycle":
-                subgraph = self._sample_cycle_subgraph(graph)
-            elif topology == "mixed":
-                subgraph = self._sample_mixed_subgraph(graph)
+        # 使用不同策略采样
+        for strategy in self.sampling_strategies:
+            logger.info(f"使用{strategy}策略采样{samples_per_strategy}个子图...")
+            
+            if strategy == 'random_walk':
+                subgraphs.extend(self._random_walk_sampling(kg, samples_per_strategy))
+            elif strategy == 'bfs':
+                subgraphs.extend(self._bfs_sampling(kg, samples_per_strategy))
+            elif strategy == 'community_based':
+                subgraphs.extend(self._community_based_sampling(kg, samples_per_strategy))
             else:
-                # 默认使用随机游走
-                subgraph = self._sample_random_walk_subgraph(graph)
-            
-            if subgraph and self._validate_subgraph(subgraph):
-                subgraphs.append(subgraph)
-        
-        return subgraphs
-    
-    def _sample_chain_subgraph(self, graph: nx.MultiDiGraph) -> Dict:
-        """
-        采样链式子图：A -> B -> C -> D
-        适合生成需要多步推理的问题
-        """
-        # 随机选择起始节点
-        start_node = random.choice(list(graph.nodes()))
-        
-        # 构建链式路径
-        path = [start_node]
-        current = start_node
-        visited = {start_node}
-        
-        # 目标链长度
-        target_length = random.randint(self.min_nodes, min(self.max_nodes, 6))
-        
-        while len(path) < target_length:
-            # 获取当前节点的后继
-            successors = [n for n in graph.successors(current) if n not in visited]
-            
-            if not successors:
-                break
+                logger.warning(f"未知的采样策略: {strategy}")
                 
-            # 选择下一个节点
-            next_node = random.choice(successors)
-            path.append(next_node)
-            visited.add(next_node)
-            current = next_node
+        # 过滤和验证子图
+        valid_subgraphs = self._filter_valid_subgraphs(subgraphs)
         
-        # 构建子图
-        subgraph = self._path_to_subgraph(graph, path)
-        subgraph['topology'] = 'chain'
-        subgraph['path'] = path
-        
-        return subgraph
-    
-    def _sample_star_subgraph(self, graph: nx.MultiDiGraph) -> Dict:
-        """
-        采样星型子图：中心节点连接多个周边节点
-        适合生成比较类或聚合类问题
-        """
-        # 选择度数较高的节点作为中心
-        node_degrees = [(n, graph.degree(n)) for n in graph.nodes()]
-        node_degrees.sort(key=lambda x: x[1], reverse=True)
-        
-        # 从度数前20%的节点中选择
-        top_nodes = node_degrees[:max(1, len(node_degrees) // 5)]
-        center_node, _ = random.choice(top_nodes)
-        
-        # 获取中心节点的邻居
-        neighbors = list(graph.predecessors(center_node)) + list(graph.successors(center_node))
-        neighbors = list(set(neighbors))  # 去重
-        
-        # 随机选择一些邻居
-        num_neighbors = min(len(neighbors), random.randint(3, self.max_nodes - 1))
-        selected_neighbors = random.sample(neighbors, num_neighbors)
-        
-        # 构建子图
-        nodes = [center_node] + selected_neighbors
-        subgraph = self._nodes_to_subgraph(graph, nodes)
-        subgraph['topology'] = 'star'
-        subgraph['center'] = center_node
-        
-        return subgraph
-    
-    def _sample_tree_subgraph(self, graph: nx.MultiDiGraph) -> Dict:
-        """
-        采样树型子图：分层结构
-        适合生成层次推理问题
-        """
-        # 选择根节点
-        root = random.choice(list(graph.nodes()))
-        
-        # BFS构建树
-        tree_nodes = [root]
-        tree_edges = []
-        visited = {root}
-        queue = [(root, 0)]  # (node, depth)
-        
-        max_depth = 3
-        
-        while queue and len(tree_nodes) < self.max_nodes:
-            current, depth = queue.pop(0)
+        # 为每个子图标注拓扑类型
+        for subgraph in valid_subgraphs:
+            topology = self._identify_topology(subgraph)
+            subgraph.graph['topology'] = topology
+            subgraph.graph['complexity'] = self._calculate_complexity(subgraph)
             
-            if depth >= max_depth:
-                continue
+        logger.info(f"子图采样完成，共得到{len(valid_subgraphs)}个有效子图")
+        return valid_subgraphs
+        
+    def _random_walk_sampling(self, kg: nx.DiGraph, num_samples: int) -> List[nx.DiGraph]:
+        """
+        随机游走采样
+        WebSailor思想：通过随机游走创建包含隐含路径的子图
+        """
+        subgraphs = []
+        nodes = list(kg.nodes())
+        
+        for _ in tqdm(range(num_samples), desc="随机游走采样"):
+            # 随机选择起始节点
+            start_node = random.choice(nodes)
             
-            # 获取子节点
-            children = [n for n in graph.successors(current) if n not in visited]
+            # 随机确定子图大小
+            target_size = random.randint(self.min_size, self.max_size)
             
-            # 随机选择一些子节点
-            if children:
-                num_children = min(len(children), random.randint(1, 3))
-                selected_children = random.sample(children, num_children)
+            # 执行随机游走
+            visited = set()
+            walk_nodes = [start_node]
+            current = start_node
+            visited.add(current)
+            
+            while len(visited) < target_size:
+                # 获取邻居节点
+                neighbors = list(kg.neighbors(current)) + list(kg.predecessors(current))
+                unvisited_neighbors = [n for n in neighbors if n not in visited]
                 
-                for child in selected_children:
-                    if len(tree_nodes) >= self.max_nodes:
+                if unvisited_neighbors:
+                    # 随机选择下一个节点
+                    next_node = random.choice(unvisited_neighbors)
+                    walk_nodes.append(next_node)
+                    visited.add(next_node)
+                    current = next_node
+                else:
+                    # 如果没有未访问的邻居，随机跳转
+                    unvisited = [n for n in nodes if n not in visited]
+                    if unvisited:
+                        current = random.choice(unvisited)
+                        walk_nodes.append(current)
+                        visited.add(current)
+                    else:
                         break
-                    tree_nodes.append(child)
-                    tree_edges.append((current, child))
-                    visited.add(child)
-                    queue.append((child, depth + 1))
-        
-        # 构建子图
-        subgraph = self._nodes_to_subgraph(graph, tree_nodes)
-        subgraph['topology'] = 'tree'
-        subgraph['root'] = root
-        subgraph['tree_edges'] = tree_edges
-        
-        return subgraph
-    
-    def _sample_cycle_subgraph(self, graph: nx.MultiDiGraph) -> Dict:
-        """
-        采样环型子图：包含循环结构
-        适合生成涉及循环依赖的问题
-        """
-        # 尝试找到一个简单环
-        try:
-            cycles = list(nx.simple_cycles(graph))
-            if not cycles:
-                # 如果没有环，退化为链式
-                return self._sample_chain_subgraph(graph)
-            
-            # 选择一个合适大小的环
-            suitable_cycles = [c for c in cycles if self.min_nodes <= len(c) <= self.max_nodes]
-            
-            if suitable_cycles:
-                cycle = random.choice(suitable_cycles)
-            else:
-                # 选择最接近的环
-                cycle = min(cycles, key=lambda c: abs(len(c) - self.min_nodes))
-                
-            # 可能添加一些额外节点
-            nodes = list(cycle)
-            for node in cycle[:2]:  # 为前两个节点添加一些邻居
-                neighbors = list(graph.neighbors(node))
-                for neighbor in neighbors:
-                    if neighbor not in nodes and len(nodes) < self.max_nodes:
-                        nodes.append(neighbor)
-            
+                        
             # 构建子图
-            subgraph = self._nodes_to_subgraph(graph, nodes)
-            subgraph['topology'] = 'cycle'
-            subgraph['cycle'] = cycle
+            subgraph = kg.subgraph(visited).copy()
             
-            return subgraph
-            
-        except Exception as e:
-            logger.warning(f"环型子图采样失败: {e}")
-            return self._sample_chain_subgraph(graph)
-    
-    def _sample_mixed_subgraph(self, graph: nx.MultiDiGraph) -> Dict:
-        """
-        采样混合型子图：包含多种拓扑结构
-        适合生成复杂的综合性问题
-        """
-        # 使用多种策略的组合
-        strategies = ['random_walk', 'bfs_sampling', 'importance_sampling']
-        strategy = random.choice(strategies)
-        
-        subgraph = self._sample_subgraph(graph, strategy)
-        if subgraph:
-            subgraph['topology'] = 'mixed'
-            
-        return subgraph
-    
-    def _sample_subgraph(self, graph: nx.MultiDiGraph, strategy: str) -> Dict:
-        """根据策略采样子图"""
-        if strategy == 'random_walk':
-            return self._sample_random_walk_subgraph(graph)
-        elif strategy == 'bfs_sampling':
-            return self._sample_bfs_subgraph(graph)
-        elif strategy == 'importance_sampling':
-            return self._sample_importance_subgraph(graph)
-        elif strategy == 'topology_guided':
-            return self._sample_topology_guided_subgraph(graph)
-        else:
-            return self._sample_random_walk_subgraph(graph)
-    
-    def _sample_random_walk_subgraph(self, graph: nx.MultiDiGraph) -> Dict:
-        """随机游走采样子图"""
-        start_node = random.choice(list(graph.nodes()))
-        
-        nodes = {start_node}
-        edges = []
-        
-        # 随机游走
-        current = start_node
-        walk_length = random.randint(self.min_nodes * 2, self.max_nodes * 3)
-        
-        for _ in range(walk_length):
-            neighbors = list(graph.neighbors(current))
-            if not neighbors:
-                # 重新开始
-                current = random.choice(list(nodes))
-                continue
-            
-            next_node = random.choice(neighbors)
-            nodes.add(next_node)
-            
-            # 添加边
-            if graph.has_edge(current, next_node):
-                edges.append((current, next_node))
-            
-            current = next_node
-            
-            if len(nodes) >= self.max_nodes:
-                break
-        
-        return self._nodes_to_subgraph(graph, list(nodes))
-    
-    def _sample_bfs_subgraph(self, graph: nx.MultiDiGraph) -> Dict:
-        """广度优先采样子图"""
-        start_node = random.choice(list(graph.nodes()))
-        
-        nodes = [start_node]
-        visited = {start_node}
-        queue = [start_node]
-        
-        while queue and len(nodes) < self.max_nodes:
-            current = queue.pop(0)
-            
-            # 获取所有邻居
-            neighbors = list(set(list(graph.predecessors(current)) + 
-                               list(graph.successors(current))))
-            
-            # 随机打乱邻居顺序
-            random.shuffle(neighbors)
-            
-            for neighbor in neighbors:
-                if neighbor not in visited and len(nodes) < self.max_nodes:
-                    nodes.append(neighbor)
-                    visited.add(neighbor)
-                    queue.append(neighbor)
-        
-        return self._nodes_to_subgraph(graph, nodes)
-    
-    def _sample_importance_subgraph(self, graph: nx.MultiDiGraph) -> Dict:
-        """基于重要性采样子图"""
-        # 计算节点重要性（使用PageRank）
-        try:
-            pagerank = nx.pagerank(graph)
-        except:
-            # 如果PageRank失败，使用度中心性
-            pagerank = {n: graph.degree(n) for n in graph.nodes()}
-        
-        # 按重要性排序
-        sorted_nodes = sorted(pagerank.items(), key=lambda x: x[1], reverse=True)
-        
-        # 选择重要节点
-        important_nodes = [n for n, _ in sorted_nodes[:self.max_nodes // 2]]
-        
-        # 添加这些节点之间的连接节点
-        nodes = set(important_nodes)
-        for i in range(len(important_nodes)):
-            for j in range(i + 1, len(important_nodes)):
-                try:
-                    # 尝试找到最短路径
-                    path = nx.shortest_path(graph, important_nodes[i], important_nodes[j])
-                    nodes.update(path[:3])  # 只添加路径的前几个节点
-                except:
-                    continue
+            # 添加一些随机边以增加复杂性（WebSailor的干扰信息）
+            if len(visited) > 3:
+                self._add_random_edges(subgraph, probability=0.1)
                 
-                if len(nodes) >= self.max_nodes:
+            subgraphs.append(subgraph)
+            
+        return subgraphs
+        
+    def _bfs_sampling(self, kg: nx.DiGraph, num_samples: int) -> List[nx.DiGraph]:
+        """
+        广度优先采样
+        WebSailor思想：创建以某个节点为中心的局部知识结构
+        """
+        subgraphs = []
+        nodes = list(kg.nodes())
+        
+        for _ in tqdm(range(num_samples), desc="BFS采样"):
+            # 随机选择中心节点
+            center = random.choice(nodes)
+            
+            # 随机确定深度
+            max_depth = random.randint(2, 4)
+            
+            # BFS遍历
+            visited = {center}
+            current_level = {center}
+            
+            for depth in range(max_depth):
+                next_level = set()
+                for node in current_level:
+                    # 获取所有邻居
+                    neighbors = set(kg.neighbors(node)) | set(kg.predecessors(node))
+                    
+                    # 随机选择部分邻居（控制子图大小）
+                    if len(neighbors) > 5:
+                        neighbors = set(random.sample(list(neighbors), 5))
+                        
+                    next_level.update(neighbors - visited)
+                    
+                visited.update(next_level)
+                current_level = next_level
+                
+                # 检查大小限制
+                if len(visited) >= self.max_size:
                     break
+                    
+            # 确保子图大小合适
+            if len(visited) < self.min_size:
+                # 添加更多节点
+                remaining = list(set(nodes) - visited)
+                if remaining:
+                    additional = random.sample(
+                        remaining, 
+                        min(self.min_size - len(visited), len(remaining))
+                    )
+                    visited.update(additional)
+                    
+            # 构建子图
+            subgraph = kg.subgraph(visited).copy()
+            subgraphs.append(subgraph)
+            
+        return subgraphs
         
-        return self._nodes_to_subgraph(graph, list(nodes)[:self.max_nodes])
-    
-    def _sample_topology_guided_subgraph(self, graph: nx.MultiDiGraph) -> Dict:
-        """拓扑引导的采样"""
-        # 随机选择一种拓扑类型
-        topology = random.choice(self.topology_types)
+    def _community_based_sampling(self, kg: nx.DiGraph, num_samples: int) -> List[nx.DiGraph]:
+        """
+        基于社区的采样
+        WebSailor思想：利用图的社区结构创建语义相关的子图
+        """
+        subgraphs = []
         
-        if topology == "chain":
-            return self._sample_chain_subgraph(graph)
-        elif topology == "star":
-            return self._sample_star_subgraph(graph)
-        elif topology == "tree":
-            return self._sample_tree_subgraph(graph)
-        elif topology == "cycle":
-            return self._sample_cycle_subgraph(graph)
-        else:
-            return self._sample_mixed_subgraph(graph)
-    
-    def _path_to_subgraph(self, graph: nx.MultiDiGraph, path: List) -> Dict:
-        """将路径转换为子图"""
-        nodes = path
-        edges = []
+        # 转换为无向图进行社区检测
+        undirected_kg = kg.to_undirected()
         
-        for i in range(len(path) - 1):
-            if graph.has_edge(path[i], path[i + 1]):
-                edge_data = graph.get_edge_data(path[i], path[i + 1])
-                edges.append({
-                    'source': path[i],
-                    'target': path[i + 1],
-                    'relation': list(edge_data.values())[0].get('relation', 'unknown')
-                })
-        
-        return self._create_subgraph_dict(graph, nodes, edges)
-    
-    def _nodes_to_subgraph(self, graph: nx.MultiDiGraph, nodes: List) -> Dict:
-        """将节点列表转换为子图"""
-        # 提取这些节点之间的所有边
-        edges = []
-        
-        for i, node1 in enumerate(nodes):
-            for node2 in nodes[i+1:]:
-                if graph.has_edge(node1, node2):
-                    edge_data = graph.get_edge_data(node1, node2)
-                    for key, data in edge_data.items():
-                        edges.append({
-                            'source': node1,
-                            'target': node2,
-                            'relation': data.get('relation', 'unknown')
-                        })
+        # 使用Louvain算法检测社区
+        try:
+            partition = community_louvain.best_partition(undirected_kg)
+            communities = defaultdict(list)
+            
+            for node, comm_id in partition.items():
+                communities[comm_id].append(node)
                 
-                if graph.has_edge(node2, node1):
-                    edge_data = graph.get_edge_data(node2, node1)
-                    for key, data in edge_data.items():
-                        edges.append({
-                            'source': node2,
-                            'target': node1,
-                            'relation': data.get('relation', 'unknown')
-                        })
+            # 从每个社区采样
+            samples_per_community = max(1, num_samples // len(communities))
+            
+            for comm_id, comm_nodes in tqdm(communities.items(), desc="社区采样"):
+                for _ in range(min(samples_per_community, len(comm_nodes) // self.min_size)):
+                    if len(comm_nodes) >= self.min_size:
+                        # 从社区中采样节点
+                        sample_size = random.randint(
+                            self.min_size, 
+                            min(self.max_size, len(comm_nodes))
+                        )
+                        sampled_nodes = random.sample(comm_nodes, sample_size)
+                        
+                        # 构建子图
+                        subgraph = kg.subgraph(sampled_nodes).copy()
+                        
+                        # 添加一些跨社区的边（增加难度）
+                        self._add_cross_community_edges(subgraph, kg, partition, probability=0.2)
+                        
+                        subgraphs.append(subgraph)
+                        
+        except Exception as e:
+            logger.warning(f"社区检测失败: {e}，使用随机采样替代")
+            # 降级到随机采样
+            subgraphs.extend(self._random_walk_sampling(kg, num_samples))
+            
+        return subgraphs[:num_samples]
         
-        return self._create_subgraph_dict(graph, nodes, edges)
-    
-    def _create_subgraph_dict(self, graph: nx.MultiDiGraph, 
-                             nodes: List, edges: List[Dict]) -> Dict:
-        """创建子图字典"""
-        # 获取节点属性
-        node_data = []
+    def _add_random_edges(self, subgraph: nx.DiGraph, probability: float = 0.1):
+        """
+        添加随机边以增加复杂性
+        WebSailor思想：通过添加干扰边增加推理难度
+        """
+        nodes = list(subgraph.nodes())
+        num_nodes = len(nodes)
+        
+        if num_nodes < 2:
+            return
+            
+        # 计算要添加的边数
+        num_edges_to_add = int(num_nodes * (num_nodes - 1) * probability)
+        
+        for _ in range(num_edges_to_add):
+            source = random.choice(nodes)
+            target = random.choice(nodes)
+            
+            if source != target and not subgraph.has_edge(source, target):
+                # 添加带有较低置信度的边
+                subgraph.add_edge(
+                    source, target,
+                    type="推断",
+                    confidence=0.3,
+                    is_noise=True
+                )
+                
+    def _add_cross_community_edges(self, subgraph: nx.DiGraph, kg: nx.DiGraph, 
+                                   partition: Dict, probability: float = 0.2):
+        """
+        添加跨社区的边
+        WebSailor思想：创建需要跨领域推理的复杂场景
+        """
+        nodes = list(subgraph.nodes())
+        
         for node in nodes:
-            data = graph.nodes[node]
-            node_data.append({
-                'id': node,
-                'type': data.get('type', 'unknown'),
-                'confidence': data.get('confidence', 1.0)
-            })
-        
-        # 创建子图
-        subgraph = {
-            'nodes': node_data,
-            'edges': edges,
-            'num_nodes': len(nodes),
-            'num_edges': len(edges),
-            'node_types': [n['type'] for n in node_data],
-            'relation_types': [e['relation'] for e in edges]
-        }
-        
-        return subgraph
-    
-    def _validate_subgraph(self, subgraph: Dict) -> bool:
-        """验证子图是否满足要求"""
-        # 检查节点数量
-        if not (self.min_nodes <= subgraph['num_nodes'] <= self.max_nodes):
-            return False
-        
-        # 检查边数量
-        if subgraph['num_edges'] < self.min_edges:
-            return False
-        
-        # 检查连通性（简化检查）
-        if subgraph['num_edges'] == 0 and subgraph['num_nodes'] > 1:
-            return False
-        
-        return True
-    
-    def _analyze_subgraphs(self, subgraphs: List[Dict]):
-        """分析子图统计信息"""
-        topology_counts = defaultdict(int)
-        node_counts = []
-        edge_counts = []
+            if random.random() < probability:
+                # 找到其他社区的节点
+                node_community = partition.get(node, -1)
+                other_nodes = [
+                    n for n in kg.nodes() 
+                    if partition.get(n, -1) != node_community and n not in nodes
+                ]
+                
+                if other_nodes:
+                    # 随机选择一个其他社区的节点
+                    other_node = random.choice(other_nodes)
+                    
+                    # 检查原图中是否有路径
+                    if nx.has_path(kg, node, other_node):
+                        # 添加这个节点和边
+                        subgraph.add_node(
+                            other_node,
+                            **kg.nodes[other_node]
+                        )
+                        subgraph.add_edge(
+                            node, other_node,
+                            type="跨域关联",
+                            confidence=0.5,
+                            is_cross_community=True
+                        )
+                        
+    def _filter_valid_subgraphs(self, subgraphs: List[nx.DiGraph]) -> List[nx.DiGraph]:
+        """
+        过滤有效的子图
+        确保子图满足WebSailor的要求：连通、大小合适、包含足够的信息
+        """
+        valid_subgraphs = []
         
         for subgraph in subgraphs:
-            topology_counts[subgraph.get('topology', 'unknown')] += 1
-            node_counts.append(subgraph['num_nodes'])
-            edge_counts.append(subgraph['num_edges'])
+            # 检查大小
+            if self.min_size <= subgraph.number_of_nodes() <= self.max_size:
+                # 检查连通性（转为无向图检查）
+                undirected = subgraph.to_undirected()
+                if nx.is_connected(undirected):
+                    # 检查是否有足够的边
+                    if subgraph.number_of_edges() >= subgraph.number_of_nodes() - 1:
+                        valid_subgraphs.append(subgraph)
+                        
+        return valid_subgraphs
         
-        logger.info("子图统计信息:")
-        logger.info(f"  拓扑类型分布: {dict(topology_counts)}")
-        logger.info(f"  平均节点数: {np.mean(node_counts):.2f}")
-        logger.info(f"  平均边数: {np.mean(edge_counts):.2f}")
-        logger.info(f"  节点数范围: {min(node_counts)} - {max(node_counts)}")
-        logger.info(f"  边数范围: {min(edge_counts)} - {max(edge_counts)}")
-    
-    def save_subgraphs(self, subgraphs: List[Dict], output_path: Path):
-        """保存子图"""
+    def _identify_topology(self, subgraph: nx.DiGraph) -> str:
+        """
+        识别子图的拓扑类型
+        用于后续根据不同拓扑生成不同类型的问题
+        """
+        num_nodes = subgraph.number_of_nodes()
+        num_edges = subgraph.number_of_edges()
+        
+        # 计算度分布
+        in_degrees = dict(subgraph.in_degree())
+        out_degrees = dict(subgraph.out_degree())
+        
+        # 转为无向图计算一些指标
+        undirected = subgraph.to_undirected()
+        
+        # 检查是否是链式
+        if self._is_chain(subgraph):
+            return 'chain'
+            
+        # 检查是否是星型
+        if self._is_star(subgraph):
+            return 'star'
+            
+        # 检查是否是树形
+        if nx.is_tree(undirected):
+            return 'tree'
+            
+        # 检查是否包含环
+        if len(list(nx.simple_cycles(subgraph))) > 0:
+            return 'cycle'
+            
+        # 根据密度判断
+        density = nx.density(subgraph)
+        if density > 0.5:
+            return 'dense'
+        elif density < 0.2:
+            return 'sparse'
+        else:
+            return 'mixed'
+            
+    def _is_chain(self, subgraph: nx.DiGraph) -> bool:
+        """检查是否是链式结构"""
+        # 链式结构：每个节点最多一个入度和一个出度
+        for node in subgraph.nodes():
+            if subgraph.in_degree(node) > 1 or subgraph.out_degree(node) > 1:
+                return False
+                
+        # 检查是否存在一条包含所有节点的路径
+        undirected = subgraph.to_undirected()
+        if nx.is_path_graph(undirected):
+            return True
+            
+        return False
+        
+    def _is_star(self, subgraph: nx.DiGraph) -> bool:
+        """检查是否是星型结构"""
+        degrees = dict(subgraph.degree())
+        max_degree = max(degrees.values())
+        
+        # 星型结构：存在一个中心节点连接大部分其他节点
+        high_degree_nodes = [n for n, d in degrees.items() if d >= len(subgraph) * 0.6]
+        
+        return len(high_degree_nodes) == 1
+        
+    def _calculate_complexity(self, subgraph: nx.DiGraph) -> float:
+        """
+        计算子图的复杂度
+        WebSailor思想：复杂度决定了问题的难度
+        """
+        # 考虑多个因素
+        num_nodes = subgraph.number_of_nodes()
+        num_edges = subgraph.number_of_edges()
+        
+        # 密度
+        density = nx.density(subgraph)
+        
+        # 平均路径长度
+        try:
+            avg_path_length = nx.average_shortest_path_length(subgraph.to_undirected())
+        except:
+            avg_path_length = 1
+            
+        # 节点类型多样性
+        node_types = set(nx.get_node_attributes(subgraph, 'type').values())
+        type_diversity = len(node_types) / max(1, num_nodes)
+        
+        # 边类型多样性
+        edge_types = set(nx.get_edge_attributes(subgraph, 'type').values())
+        edge_diversity = len(edge_types) / max(1, num_edges)
+        
+        # 综合复杂度
+        complexity = (
+            0.2 * (num_nodes / self.max_size) +
+            0.2 * density +
+            0.2 * (avg_path_length / max(1, num_nodes)) +
+            0.2 * type_diversity +
+            0.2 * edge_diversity
+        )
+        
+        return min(1.0, complexity)
+        
+    def save_subgraphs(self, subgraphs: List[nx.DiGraph], output_path: str):
+        """保存采样的子图"""
+        import json
+        
+        subgraphs_data = []
+        
+        for i, subgraph in enumerate(subgraphs):
+            data = {
+                'id': i,
+                'topology': subgraph.graph.get('topology', 'unknown'),
+                'complexity': subgraph.graph.get('complexity', 0),
+                'num_nodes': subgraph.number_of_nodes(),
+                'num_edges': subgraph.number_of_edges(),
+                'nodes': [
+                    {
+                        'id': node,
+                        'type': subgraph.nodes[node].get('type', ''),
+                        'confidence': subgraph.nodes[node].get('confidence', 1.0)
+                    }
+                    for node in subgraph.nodes()
+                ],
+                'edges': [
+                    {
+                        'source': u,
+                        'target': v,
+                        'type': subgraph.edges[u, v].get('type', ''),
+                        'confidence': subgraph.edges[u, v].get('confidence', 1.0),
+                        'is_noise': subgraph.edges[u, v].get('is_noise', False)
+                    }
+                    for u, v in subgraph.edges()
+                ]
+            }
+            subgraphs_data.append(data)
+            
         with open(output_path, 'w', encoding='utf-8') as f:
-            json.dump(subgraphs, f, ensure_ascii=False, indent=2)
-        
-        logger.info(f"子图已保存到: {output_path}")
-    
-    def load_subgraphs(self, input_path: Path) -> List[Dict]:
-        """加载子图"""
-        with open(input_path, 'r', encoding='utf-8') as f:
-            subgraphs = json.load(f)
-        
-        logger.info(f"加载了 {len(subgraphs)} 个子图")
-        return subgraphs
+            json.dump(subgraphs_data, f, ensure_ascii=False, indent=2)
+            
+        logger.info(f"已保存{len(subgraphs)}个子图到: {output_path}")
