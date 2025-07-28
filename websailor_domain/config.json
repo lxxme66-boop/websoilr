@@ -1,0 +1,252 @@
+{
+  "domain": "TCL_Industry",
+  "description": "TCL工业垂域数据集构建配置",
+  
+  "knowledge_graph": {
+    "entity_types": [
+      "Product",
+      "Technology",
+      "Component", 
+      "Material",
+      "Process",
+      "Standard",
+      "Company",
+      "Person",
+      "Location",
+      "Time"
+    ],
+    "relation_types": [
+      "manufactures",
+      "uses_technology",
+      "contains_component",
+      "made_of_material",
+      "follows_process",
+      "complies_with_standard",
+      "developed_by",
+      "located_in",
+      "cooperates_with",
+      "competes_with"
+    ],
+    "extraction": {
+      "method": "hybrid",
+      "use_ner": true,
+      "use_dependency_parsing": true,
+      "use_pattern_matching": true,
+      "confidence_threshold": 0.7
+    }
+  },
+  
+  "subgraph_sampling": {
+    "sampling_strategies": [
+      {
+        "name": "star_topology",
+        "description": "中心节点向外辐射的星型拓扑",
+        "min_nodes": 5,
+        "max_nodes": 15,
+        "weight": 0.2
+      },
+      {
+        "name": "chain_topology", 
+        "description": "链式关系拓扑，适合生产流程类问题",
+        "min_length": 3,
+        "max_length": 8,
+        "weight": 0.3
+      },
+      {
+        "name": "tree_topology",
+        "description": "树形拓扑，适合组件层级关系",
+        "min_depth": 2,
+        "max_depth": 4,
+        "weight": 0.2
+      },
+      {
+        "name": "mesh_topology",
+        "description": "网状拓扑，包含多个交叉关系",
+        "min_nodes": 6,
+        "max_nodes": 20,
+        "density": 0.3,
+        "weight": 0.3
+      }
+    ],
+    "num_subgraphs_per_strategy": 500,
+    "ensure_connectivity": true,
+    "include_attributes": true
+  },
+  
+  "question_generation": {
+    "question_types": [
+      {
+        "type": "single_hop",
+        "description": "单跳问题 - 直接关系查询",
+        "templates": [
+          "{entity}使用什么技术？",
+          "{entity}的制造商是谁？",
+          "{entity}包含哪些组件？"
+        ],
+        "weight": 0.2
+      },
+      {
+        "type": "multi_hop",
+        "description": "多跳问题 - 需要多步推理",
+        "templates": [
+          "{entity1}的制造商生产的其他产品使用了什么技术？",
+          "使用{technology}技术的产品都包含哪些共同组件？"
+        ],
+        "weight": 0.3
+      },
+      {
+        "type": "comparison",
+        "description": "比较问题 - 对比多个实体",
+        "templates": [
+          "{entity1}和{entity2}在技术上有什么区别？",
+          "哪个产品的组件更复杂：{entity1}还是{entity2}？"
+        ],
+        "weight": 0.2
+      },
+      {
+        "type": "aggregation",
+        "description": "聚合问题 - 统计类查询",
+        "templates": [
+          "有多少产品使用了{technology}技术？",
+          "{company}总共生产了多少种不同类型的产品？"
+        ],
+        "weight": 0.15
+      },
+      {
+        "type": "constraint",
+        "description": "约束问题 - 带条件的查询",
+        "templates": [
+          "哪些产品既使用{technology1}又符合{standard}标准？",
+          "在{location}生产且包含{component}的产品有哪些？"
+        ],
+        "weight": 0.15
+      }
+    ],
+    "answer_generation": {
+      "include_evidence": true,
+      "max_evidence_hops": 3,
+      "format": "natural_language"
+    }
+  },
+  
+  "obfuscation": {
+    "strategies": [
+      {
+        "name": "entity_substitution",
+        "description": "实体替换 - 用模糊描述代替具体实体",
+        "rules": [
+          {
+            "pattern": "specific_product_name",
+            "replacement": "这款新型显示产品"
+          },
+          {
+            "pattern": "company_name",
+            "replacement": "某知名电子制造商"
+          }
+        ],
+        "probability": 0.4
+      },
+      {
+        "name": "information_injection",
+        "description": "信息注入 - 添加干扰信息",
+        "types": [
+          "related_but_irrelevant",
+          "similar_entities",
+          "historical_context"
+        ],
+        "max_injections_per_question": 2,
+        "probability": 0.5
+      },
+      {
+        "name": "relation_ambiguity",
+        "description": "关系模糊化 - 使关系不明确",
+        "strategies": [
+          "indirect_reference",
+          "temporal_ambiguity",
+          "spatial_ambiguity"
+        ],
+        "probability": 0.3
+      },
+      {
+        "name": "context_expansion",
+        "description": "上下文扩展 - 增加背景信息",
+        "min_sentences": 2,
+        "max_sentences": 5,
+        "relevance_threshold": 0.6,
+        "probability": 0.4
+      }
+    ],
+    "preserve_answerability": true,
+    "validation": {
+      "check_ambiguity_level": true,
+      "max_ambiguity_score": 0.8,
+      "ensure_unique_answer": true
+    }
+  },
+  
+  "trajectory_generation": {
+    "reasoning_patterns": [
+      "deductive",
+      "inductive", 
+      "abductive",
+      "analogical"
+    ],
+    "step_types": [
+      "entity_identification",
+      "relation_traversal",
+      "attribute_extraction",
+      "constraint_checking",
+      "aggregation_computation",
+      "comparison_analysis"
+    ],
+    "max_steps": 10,
+    "include_negative_examples": true,
+    "error_injection_rate": 0.1
+  },
+  
+  "data_synthesis": {
+    "output_formats": [
+      "json",
+      "jsonl",
+      "csv"
+    ],
+    "split_ratios": {
+      "train": 0.7,
+      "validation": 0.15,
+      "test": 0.15
+    },
+    "quality_checks": {
+      "remove_duplicates": true,
+      "validate_answers": true,
+      "check_consistency": true,
+      "min_question_length": 10,
+      "max_question_length": 200
+    },
+    "metadata": {
+      "include_difficulty_score": true,
+      "include_reasoning_type": true,
+      "include_source_subgraph": true,
+      "include_timestamp": true
+    }
+  },
+  
+  "tcl_specific": {
+    "focus_areas": [
+      "display_technology",
+      "semiconductor_manufacturing",
+      "smart_home_devices",
+      "industrial_automation",
+      "quality_control"
+    ],
+    "terminology": {
+      "use_industry_glossary": true,
+      "glossary_path": "resources/tcl_glossary.json"
+    },
+    "standards": [
+      "ISO9001",
+      "IEC60950",
+      "RoHS",
+      "CE"
+    ]
+  }
+}

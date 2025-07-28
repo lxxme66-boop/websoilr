@@ -1,0 +1,281 @@
+{
+  "domain": "TCL_Industry",
+  "version": "1.0",
+  "created_at": "2024-01-01T10:00:00",
+  "samples": [
+    {
+      "id": "TCL_Industry_000001",
+      "question": "某知名电子制造商推出的新型显示产品采用了什么技术？",
+      "answer": "Mini-LED显示技术",
+      "original_question": "TCL推出的显示器采用了什么技术？",
+      "question_type": "single_hop",
+      "difficulty": 0.3,
+      "ambiguity_score": 0.4,
+      "evidence_path": [
+        {
+          "source": "TCL显示器",
+          "relation": "uses_technology",
+          "target": "Mini-LED显示技术"
+        }
+      ],
+      "subgraph": {
+        "topology_type": "star",
+        "num_nodes": 6,
+        "num_edges": 5,
+        "nodes": [
+          "TCL显示器",
+          "Mini-LED显示技术",
+          "量子点材料",
+          "背光模组",
+          "RoHS标准",
+          "TCL华星光电"
+        ],
+        "edges": [
+          {
+            "source": "TCL显示器",
+            "target": "Mini-LED显示技术",
+            "relation": "uses_technology"
+          },
+          {
+            "source": "Mini-LED显示技术",
+            "target": "量子点材料",
+            "relation": "uses_material"
+          }
+        ]
+      },
+      "trajectories": [
+        {
+          "reasoning_pattern": "deductive",
+          "is_successful": true,
+          "final_answer": "Mini-LED显示技术",
+          "steps": [
+            {
+              "step_type": "entity_identification",
+              "description": "识别问题中的关键实体：某知名电子制造商的新型显示产品",
+              "entities_involved": ["TCL显示器"],
+              "relations_involved": [],
+              "is_correct": true
+            },
+            {
+              "step_type": "relation_traversal",
+              "description": "通过uses_technology关系找到答案",
+              "entities_involved": ["TCL显示器", "Mini-LED显示技术"],
+              "relations_involved": ["uses_technology"],
+              "is_correct": true
+            }
+          ]
+        }
+      ],
+      "obfuscation_metadata": {
+        "applied_strategies": ["entity_substitution", "context_expansion"],
+        "entity_substitutions": [
+          {
+            "original": "TCL",
+            "substitution": "某知名电子制造商",
+            "type": "manufacturer"
+          },
+          {
+            "original": "显示器",
+            "substitution": "新型显示产品",
+            "type": "display"
+          }
+        ]
+      }
+    },
+    {
+      "id": "TCL_Industry_000002",
+      "question": "在过去几年的发展中，使用量子点材料的显示技术被哪家公司的工厂生产？",
+      "answer": "TCL华星光电",
+      "original_question": "使用量子点材料的Mini-LED显示器由谁制造？",
+      "question_type": "multi_hop",
+      "difficulty": 0.5,
+      "ambiguity_score": 0.6,
+      "evidence_path": [
+        {
+          "source": "量子点材料",
+          "relation": "used_by",
+          "target": "Mini-LED显示技术"
+        },
+        {
+          "source": "Mini-LED显示技术",
+          "relation": "used_by",
+          "target": "TCL显示器"
+        },
+        {
+          "source": "TCL显示器",
+          "relation": "manufactured_by",
+          "target": "TCL华星光电"
+        }
+      ],
+      "subgraph": {
+        "topology_type": "chain",
+        "num_nodes": 4,
+        "num_edges": 3,
+        "nodes": [
+          "量子点材料",
+          "Mini-LED显示技术",
+          "TCL显示器",
+          "TCL华星光电"
+        ]
+      },
+      "trajectories": [
+        {
+          "reasoning_pattern": "deductive",
+          "is_successful": true,
+          "final_answer": "TCL华星光电",
+          "steps": [
+            {
+              "step_type": "entity_identification",
+              "description": "识别起始实体：量子点材料",
+              "entities_involved": ["量子点材料"],
+              "relations_involved": [],
+              "is_correct": true
+            },
+            {
+              "step_type": "relation_traversal",
+              "description": "第1跳：从量子点材料到Mini-LED显示技术",
+              "entities_involved": ["量子点材料", "Mini-LED显示技术"],
+              "relations_involved": ["used_by"],
+              "is_correct": true
+            },
+            {
+              "step_type": "relation_traversal",
+              "description": "第2跳：从Mini-LED显示技术到TCL显示器",
+              "entities_involved": ["Mini-LED显示技术", "TCL显示器"],
+              "relations_involved": ["used_by"],
+              "is_correct": true
+            },
+            {
+              "step_type": "relation_traversal",
+              "description": "第3跳：从TCL显示器到TCL华星光电",
+              "entities_involved": ["TCL显示器", "TCL华星光电"],
+              "relations_involved": ["manufactured_by"],
+              "is_correct": true
+            }
+          ]
+        }
+      ],
+      "obfuscation_metadata": {
+        "applied_strategies": ["information_injection", "relation_ambiguity"],
+        "information_injections": [
+          {
+            "type": "historical_context",
+            "content": "在过去几年的发展中，"
+          }
+        ]
+      }
+    },
+    {
+      "id": "TCL_Industry_000003",
+      "question": "TCL的显示产品符合多少项标准认证？",
+      "answer": "2",
+      "question_type": "aggregation",
+      "difficulty": 0.4,
+      "ambiguity_score": 0.2,
+      "evidence_path": [
+        {
+          "source": "TCL显示器",
+          "relation": "complies_with_standard",
+          "target": "RoHS标准"
+        },
+        {
+          "source": "TCL显示器",
+          "relation": "complies_with_standard",
+          "target": "CE认证"
+        }
+      ],
+      "subgraph": {
+        "topology_type": "star",
+        "num_nodes": 3,
+        "num_edges": 2,
+        "nodes": ["TCL显示器", "RoHS标准", "CE认证"]
+      },
+      "trajectories": [
+        {
+          "reasoning_pattern": "inductive",
+          "is_successful": true,
+          "final_answer": "2",
+          "steps": [
+            {
+              "step_type": "aggregation_target_identification",
+              "description": "识别需要统计的标准认证",
+              "entities_involved": ["TCL显示器"],
+              "relations_involved": ["complies_with_standard"],
+              "is_correct": true
+            },
+            {
+              "step_type": "entity_collection",
+              "description": "收集所有相关标准：RoHS标准, CE认证",
+              "entities_involved": ["RoHS标准", "CE认证"],
+              "relations_involved": [],
+              "is_correct": true
+            },
+            {
+              "step_type": "aggregation_computation",
+              "description": "计算标准数量：2项",
+              "entities_involved": [],
+              "relations_involved": [],
+              "is_correct": true
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "knowledge_graph": {
+    "num_nodes": 15,
+    "num_edges": 20,
+    "nodes": [
+      {
+        "id": "TCL显示器",
+        "type": "Product",
+        "attributes": {}
+      },
+      {
+        "id": "Mini-LED显示技术",
+        "type": "Technology",
+        "attributes": {}
+      },
+      {
+        "id": "量子点材料",
+        "type": "Material",
+        "attributes": {}
+      },
+      {
+        "id": "TCL华星光电",
+        "type": "Company",
+        "attributes": {
+          "location": "深圳"
+        }
+      }
+    ]
+  },
+  "statistics": {
+    "total_samples": 3,
+    "domain": "TCL_Industry",
+    "question_types": {
+      "single_hop": 1,
+      "multi_hop": 1,
+      "aggregation": 1
+    },
+    "topology_types": {
+      "star": 2,
+      "chain": 1
+    },
+    "difficulty": {
+      "min": 0.3,
+      "max": 0.5,
+      "mean": 0.4
+    },
+    "ambiguity": {
+      "min": 0.2,
+      "max": 0.6,
+      "mean": 0.4
+    },
+    "trajectories": {
+      "total": 3,
+      "successful": 3,
+      "error_rate": 0.0
+    }
+  }
+}
