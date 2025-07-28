@@ -469,3 +469,36 @@ class KnowledgeGraphBuilder:
                 return domain_type
         
         return '通用实体'
+    
+    def _filter_entities(self, entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """过滤和去重实体"""
+        if not entities:
+            return []
+        
+        # 去重：基于实体文本去重
+        unique_entities = {}
+        for entity in entities:
+            text = entity.get('text', '').strip()
+            if text and len(text) > 1:  # 过滤掉空白和单字符实体
+                if text not in unique_entities:
+                    unique_entities[text] = entity
+        
+        # 过滤低质量实体
+        filtered_entities = []
+        for entity in unique_entities.values():
+            text = entity.get('text', '')
+            
+            # 跳过纯数字、纯标点或过短的实体
+            if (len(text) < 2 or 
+                text.isdigit() or 
+                all(not c.isalnum() for c in text)):
+                continue
+            
+            # 跳过常见停用词
+            stop_words = {'的', '了', '在', '是', '有', '和', '与', '或', '等', '及'}
+            if text in stop_words:
+                continue
+            
+            filtered_entities.append(entity)
+        
+        return filtered_entities
