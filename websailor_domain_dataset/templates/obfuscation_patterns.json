@@ -1,0 +1,204 @@
+{
+  "entity_abstraction": {
+    "patterns": [
+      {
+        "original_pattern": "{specific_entity}",
+        "abstract_patterns": [
+          "这个{category}",
+          "某种{type}",
+          "相关的{aspect}",
+          "上述{entity_type}",
+          "该{domain_term}",
+          "此类{classification}"
+        ],
+        "example": {
+          "original": "LED背光模组",
+          "abstracted": ["这个照明组件", "某种背光技术", "相关的显示部件"]
+        }
+      },
+      {
+        "original_pattern": "{entity1}和{entity2}",
+        "abstract_patterns": [
+          "前者和后者",
+          "这两个{category}",
+          "它们",
+          "两种{type}",
+          "这些{aspect}"
+        ]
+      }
+    ],
+    
+    "abstraction_rules": {
+      "产品": ["设备", "产品", "系统", "装置"],
+      "设备": ["装置", "设施", "器械", "仪器"],
+      "工艺": ["方法", "技术", "流程", "过程"],
+      "材料": ["物质", "原料", "成分", "材质"],
+      "参数": ["指标", "数值", "标准", "规格"],
+      "故障": ["问题", "缺陷", "异常", "故障现象"],
+      "维护": ["保养", "维修", "处理", "操作"]
+    }
+  },
+  
+  "information_scattering": {
+    "insertion_patterns": [
+      {
+        "type": "contextual",
+        "templates": [
+          "值得注意的是，{related_fact}。",
+          "在实际应用中，{background_info}。",
+          "根据行业经验，{domain_knowledge}。",
+          "通常情况下，{general_principle}。",
+          "需要考虑的是，{consideration}。"
+        ]
+      },
+      {
+        "type": "technical",
+        "templates": [
+          "从技术角度看，{technical_detail}。",
+          "相关标准规定，{standard_info}。",
+          "测试数据显示，{test_result}。",
+          "理论上，{theoretical_aspect}。"
+        ]
+      }
+    ],
+    
+    "scatter_strategies": {
+      "beginning": 0.2,
+      "middle": 0.5,
+      "end": 0.3
+    }
+  },
+  
+  "redundancy_injection": {
+    "redundancy_types": {
+      "similar_facts": {
+        "templates": [
+          "类似地，{similar_fact}。",
+          "与此相关的是，{related_info}。",
+          "另一个例子是，{another_example}。",
+          "同样的道理，{similar_principle}。"
+        ]
+      },
+      "related_context": {
+        "templates": [
+          "在{related_domain}领域，{domain_fact}。",
+          "历史上，{historical_context}。",
+          "其他厂商的做法是，{competitor_practice}。",
+          "国际标准中，{international_standard}。"
+        ]
+      },
+      "background_info": {
+        "templates": [
+          "背景知识：{background}。",
+          "基础原理是，{fundamental}。",
+          "这涉及到{related_concept}的概念。",
+          "从{perspective}的角度来看，{viewpoint}。"
+        ]
+      }
+    },
+    
+    "injection_frequency": {
+      "low": 0.1,
+      "medium": 0.2,
+      "high": 0.3
+    }
+  },
+  
+  "ambiguity_introduction": {
+    "ambiguity_types": {
+      "pronoun": {
+        "replacements": {
+          "这个": ["它", "该", "此", "那个"],
+          "这些": ["它们", "这类", "此类", "那些"],
+          "该设备": ["它", "这个装置", "此设备"],
+          "该工艺": ["这个过程", "此方法", "这种技术"]
+        }
+      },
+      "temporal": {
+        "vague_terms": [
+          "最近",
+          "之前",
+          "早期",
+          "后来",
+          "随后",
+          "一段时间后",
+          "在某个阶段",
+          "目前"
+        ],
+        "specific_to_vague": {
+          "2023年": "近年来",
+          "上个月": "最近",
+          "去年": "之前",
+          "本季度": "这段时间"
+        }
+      },
+      "spatial": {
+        "vague_terms": [
+          "某处",
+          "这里",
+          "那里",
+          "附近",
+          "相关位置",
+          "特定区域",
+          "某个部位"
+        ],
+        "specific_to_vague": {
+          "生产线A区": "某个生产区域",
+          "1号车间": "某个车间",
+          "检测工位": "相关工位",
+          "仓库B": "存储区域"
+        }
+      },
+      "quantitative": {
+        "vague_terms": [
+          "一些",
+          "若干",
+          "多个",
+          "少量",
+          "大量",
+          "适量",
+          "一定程度"
+        ],
+        "specific_to_vague": {
+          "5个": "几个",
+          "100毫米": "一定长度",
+          "80%": "大部分",
+          "3次": "多次"
+        }
+      }
+    },
+    
+    "ambiguity_level": {
+      "low": {
+        "max_ambiguities": 1,
+        "types": ["pronoun"]
+      },
+      "moderate": {
+        "max_ambiguities": 3,
+        "types": ["pronoun", "temporal", "quantitative"]
+      },
+      "high": {
+        "max_ambiguities": 5,
+        "types": ["pronoun", "temporal", "spatial", "quantitative"]
+      }
+    }
+  },
+  
+  "domain_specific_obfuscation": {
+    "tcl_technical_terms": {
+      "display": {
+        "具体术语": ["抽象表述"],
+        "LED背光": ["照明系统", "光源组件"],
+        "液晶面板": ["显示组件", "成像部件"],
+        "驱动IC": ["控制芯片", "驱动组件"],
+        "偏光片": ["光学膜", "功能膜层"]
+      },
+      "manufacturing": {
+        "SMT贴片": ["表面贴装", "组装工艺"],
+        "回流焊": ["焊接工艺", "连接过程"],
+        "AOI检测": ["光学检测", "自动检测"],
+        "老化测试": ["可靠性测试", "稳定性验证"]
+      }
+    }
+  }
+}

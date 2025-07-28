@@ -1,0 +1,162 @@
+{
+  "factual": {
+    "templates": [
+      {
+        "pattern": "{entity}的{attribute}是什么？",
+        "variables": ["entity", "attribute"],
+        "example": "液晶显示器的工作原理是什么？"
+      },
+      {
+        "pattern": "{entity1}和{entity2}之间的关系是什么？",
+        "variables": ["entity1", "entity2"],
+        "example": "LED背光和LCD面板之间的关系是什么？"
+      },
+      {
+        "pattern": "哪些{category}属于{parent_entity}？",
+        "variables": ["category", "parent_entity"],
+        "example": "哪些检测设备属于质量控制系统？"
+      },
+      {
+        "pattern": "{entity}的主要{aspect}有哪些？",
+        "variables": ["entity", "aspect"],
+        "example": "SMT贴片机的主要参数有哪些？"
+      },
+      {
+        "pattern": "什么是{concept}？",
+        "variables": ["concept"],
+        "example": "什么是色域覆盖率？"
+      }
+    ]
+  },
+  
+  "reasoning": {
+    "templates": [
+      {
+        "pattern": "如果{condition}，那么{entity}会如何变化？",
+        "variables": ["condition", "entity"],
+        "example": "如果温度升高，那么液晶响应时间会如何变化？"
+      },
+      {
+        "pattern": "为什么{entity1}会影响{entity2}？",
+        "variables": ["entity1", "entity2"],
+        "example": "为什么背光亮度会影响功耗？"
+      },
+      {
+        "pattern": "在{scenario}情况下，应该如何{action}？",
+        "variables": ["scenario", "action"],
+        "example": "在发现屏幕闪烁情况下，应该如何排查故障？"
+      },
+      {
+        "pattern": "{cause}会导致什么{consequence}？",
+        "variables": ["cause", "consequence"],
+        "example": "电压不稳会导致什么质量问题？"
+      },
+      {
+        "pattern": "要实现{goal}，需要满足哪些{requirement}？",
+        "variables": ["goal", "requirement"],
+        "example": "要实现高色准，需要满足哪些技术要求？"
+      }
+    ]
+  },
+  
+  "multi_hop": {
+    "templates": [
+      {
+        "pattern": "{entity1}通过什么影响{entity3}？",
+        "variables": ["entity1", "entity3"],
+        "example": "驱动IC通过什么影响显示效果？"
+      },
+      {
+        "pattern": "从{start}到{end}的完整流程是什么？",
+        "variables": ["start", "end"],
+        "example": "从原材料到成品的完整流程是什么？"
+      },
+      {
+        "pattern": "哪个{category}同时满足{condition1}和{condition2}？",
+        "variables": ["category", "condition1", "condition2"],
+        "example": "哪个工艺同时满足高效率和低成本？"
+      },
+      {
+        "pattern": "{entity1}如何通过{entity2}实现{objective}？",
+        "variables": ["entity1", "entity2", "objective"],
+        "example": "控制系统如何通过传感器实现精确定位？"
+      },
+      {
+        "pattern": "在{process}中，{component1}和{component2}如何协同工作？",
+        "variables": ["process", "component1", "component2"],
+        "example": "在组装过程中，机械臂和视觉系统如何协同工作？"
+      }
+    ]
+  },
+  
+  "comparative": {
+    "templates": [
+      {
+        "pattern": "{entity1}和{entity2}在{aspect}方面有什么区别？",
+        "variables": ["entity1", "entity2", "aspect"],
+        "example": "IPS和VA在响应时间方面有什么区别？"
+      },
+      {
+        "pattern": "哪种{category}更适合{scenario}？",
+        "variables": ["category", "scenario"],
+        "example": "哪种检测方法更适合大批量生产？"
+      },
+      {
+        "pattern": "比较{option1}和{option2}的优缺点。",
+        "variables": ["option1", "option2"],
+        "example": "比较自动化检测和人工检测的优缺点。"
+      },
+      {
+        "pattern": "在{criterion}方面，{entity1}相比{entity2}有什么优势？",
+        "variables": ["criterion", "entity1", "entity2"],
+        "example": "在能效方面，LED相比CCFL有什么优势？"
+      },
+      {
+        "pattern": "{method1}和{method2}哪个更{characteristic}？",
+        "variables": ["method1", "method2", "characteristic"],
+        "example": "热压工艺和冷压工艺哪个更稳定？"
+      }
+    ]
+  },
+  
+  "domain_specific": {
+    "tcl_display": [
+      {
+        "pattern": "{display_tech}的{parameter}如何影响{quality_metric}？",
+        "variables": ["display_tech", "parameter", "quality_metric"],
+        "example": "QLED的量子点浓度如何影响色彩饱和度？"
+      },
+      {
+        "pattern": "在{application}应用中，应该选择哪种{component}？",
+        "variables": ["application", "component"],
+        "example": "在户外显示应用中，应该选择哪种背光方案？"
+      }
+    ],
+    
+    "tcl_manufacturing": [
+      {
+        "pattern": "{process}的{parameter}应该控制在什么范围？",
+        "variables": ["process", "parameter"],
+        "example": "回流焊的温度应该控制在什么范围？"
+      },
+      {
+        "pattern": "如何优化{production_line}的{metric}？",
+        "variables": ["production_line", "metric"],
+        "example": "如何优化SMT产线的良率？"
+      }
+    ],
+    
+    "tcl_quality": [
+      {
+        "pattern": "{defect}的主要原因是什么？",
+        "variables": ["defect"],
+        "example": "亮点缺陷的主要原因是什么？"
+      },
+      {
+        "pattern": "如何预防{quality_issue}的发生？",
+        "variables": ["quality_issue"],
+        "example": "如何预防静电损伤的发生？"
+      }
+    ]
+  }
+}

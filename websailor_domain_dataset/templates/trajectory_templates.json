@@ -1,0 +1,188 @@
+{
+  "reasoning_patterns": {
+    "deductive": {
+      "description": "从一般原理推导出特定结论",
+      "steps": ["premise", "rule_application", "conclusion"],
+      "step_templates": {
+        "premise": [
+          "前提：{general_principle}",
+          "已知：{known_fact}",
+          "根据定义：{definition}",
+          "基本原理：{fundamental}"
+        ],
+        "rule_application": [
+          "应用规则：{rule}",
+          "根据{principle}，可以推导出{inference}",
+          "由于{condition}，因此{result}",
+          "基于{basis}，得出{deduction}"
+        ],
+        "conclusion": [
+          "因此，{final_conclusion}",
+          "综上所述，{summary}",
+          "最终结论：{result}",
+          "由此可得：{answer}"
+        ]
+      }
+    },
+    
+    "inductive": {
+      "description": "从具体观察归纳出一般规律",
+      "steps": ["observations", "pattern_recognition", "generalization"],
+      "step_templates": {
+        "observations": [
+          "观察1：{observation1}",
+          "案例A：{case_a}",
+          "实例：{instance}",
+          "数据显示：{data_point}"
+        ],
+        "pattern_recognition": [
+          "发现模式：{pattern}",
+          "共同特征：{common_feature}",
+          "规律性：{regularity}",
+          "趋势：{trend}"
+        ],
+        "generalization": [
+          "归纳得出：{general_rule}",
+          "一般规律：{principle}",
+          "普遍结论：{universal_conclusion}",
+          "总体而言：{overall_pattern}"
+        ]
+      }
+    },
+    
+    "abductive": {
+      "description": "寻找最佳解释",
+      "steps": ["observation", "hypothesis", "verification"],
+      "step_templates": {
+        "observation": [
+          "观察到现象：{phenomenon}",
+          "发现问题：{problem}",
+          "异常情况：{anomaly}",
+          "现象描述：{description}"
+        ],
+        "hypothesis": [
+          "可能的解释：{explanation}",
+          "假设：{hypothesis}",
+          "推测原因：{possible_cause}",
+          "初步判断：{preliminary_judgment}"
+        ],
+        "verification": [
+          "验证：{verification_process}",
+          "证据支持：{supporting_evidence}",
+          "确认：{confirmation}",
+          "检验结果：{test_result}"
+        ]
+      }
+    },
+    
+    "analogical": {
+      "description": "通过类比进行推理",
+      "steps": ["source_case", "mapping", "target_application"],
+      "step_templates": {
+        "source_case": [
+          "参考案例：{reference_case}",
+          "类似情况：{similar_situation}",
+          "已知案例：{known_case}",
+          "相关经验：{related_experience}"
+        ],
+        "mapping": [
+          "对应关系：{correspondence}",
+          "相似点：{similarities}",
+          "映射：{mapping_relation}",
+          "类比：{analogy}"
+        ],
+        "target_application": [
+          "应用到当前：{current_application}",
+          "类推结果：{analogical_result}",
+          "迁移结论：{transferred_conclusion}",
+          "适用于：{applicable_to}"
+        ]
+      }
+    }
+  },
+  
+  "domain_specific_patterns": {
+    "fault_diagnosis": {
+      "pattern": "abductive",
+      "custom_steps": ["symptom_analysis", "cause_hypothesis", "diagnostic_test", "root_cause"],
+      "templates": {
+        "symptom_analysis": "分析症状：{symptoms}表明可能存在{potential_issues}",
+        "cause_hypothesis": "可能原因：基于经验，{likely_causes}的概率较高",
+        "diagnostic_test": "诊断测试：通过{test_method}检查{test_target}",
+        "root_cause": "根本原因：确定为{root_cause}，需要{solution}"
+      }
+    },
+    
+    "process_optimization": {
+      "pattern": "inductive",
+      "custom_steps": ["data_collection", "bottleneck_identification", "improvement_hypothesis", "validation"],
+      "templates": {
+        "data_collection": "收集数据：{metrics}显示{current_performance}",
+        "bottleneck_identification": "识别瓶颈：{bottleneck}限制了整体效率",
+        "improvement_hypothesis": "改进方案：通过{method}可以提升{expected_improvement}",
+        "validation": "验证效果：实施后{actual_improvement}，达到预期目标"
+      }
+    },
+    
+    "quality_control": {
+      "pattern": "deductive",
+      "custom_steps": ["standard_reference", "measurement", "comparison", "judgment"],
+      "templates": {
+        "standard_reference": "参考标准：{standard}规定{requirement}",
+        "measurement": "实际测量：{parameter}的值为{measured_value}",
+        "comparison": "对比分析：{deviation}超出允许范围",
+        "judgment": "质量判定：{quality_status}，需要{action}"
+      }
+    }
+  },
+  
+  "confidence_indicators": {
+    "high_confidence": {
+      "phrases": ["明确表明", "充分证据", "确定无疑", "完全符合"],
+      "score_range": [0.8, 1.0]
+    },
+    "medium_confidence": {
+      "phrases": ["可能表示", "初步判断", "大致符合", "基本确定"],
+      "score_range": [0.6, 0.8]
+    },
+    "low_confidence": {
+      "phrases": ["不确定", "需要进一步验证", "存在疑问", "可能性较小"],
+      "score_range": [0.0, 0.6]
+    }
+  },
+  
+  "dead_end_patterns": {
+    "types": {
+      "insufficient_information": {
+        "indicators": ["信息不足", "缺少关键数据", "无法判断"],
+        "resolution": "需要收集更多信息"
+      },
+      "wrong_assumption": {
+        "indicators": ["假设错误", "前提不成立", "逻辑矛盾"],
+        "resolution": "重新审视基本假设"
+      },
+      "circular_reasoning": {
+        "indicators": ["循环论证", "自我引用", "逻辑闭环"],
+        "resolution": "寻找独立证据"
+      }
+    }
+  },
+  
+  "trajectory_complexity": {
+    "simple": {
+      "max_steps": 3,
+      "branching_factor": 0,
+      "confidence_threshold": 0.8
+    },
+    "medium": {
+      "max_steps": 5,
+      "branching_factor": 1,
+      "confidence_threshold": 0.6
+    },
+    "complex": {
+      "max_steps": 8,
+      "branching_factor": 2,
+      "confidence_threshold": 0.5
+    }
+  }
+}
