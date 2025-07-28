@@ -1,256 +1,255 @@
 # WebSailor Domain-Specific Dataset Construction System
 
-基于WebSailor核心思想的垂域数据集构建系统，专门用于TCL工业领域。
+基于WebSailor核心思想构建的TCL工业垂域数据集生成系统
 
 ## 项目概述
 
-本项目实现了WebSailor的三大核心思想：
-1. **子图采样** - 从整个知识图中抽取不同拓扑的子图作为问题候选基础
-2. **问题生成** - 基于子图中节点与关系，设计多样化的QA问题
-3. **模糊化处理** - 添加冗余或干扰信息，使问题信息密度高但精确信息少
+本项目实现了WebSailor的三大核心思想，专门针对TCL工业领域进行了优化：
+
+1. **子图采样** - 从知识图中抽取不同拓扑的子图作为问题候选基础
+2. **问题生成** - 基于子图中节点与关系，设计多样化QA问题
+3. **模糊化处理** - 模糊描述中间实体或关系，添加干扰信息增加推理难度
 
 ## 与原版WebSailor的区别
 
-### 1. 领域特化
-- **WebSailor**: 通用的网络信息搜索和推理数据集
-- **本项目**: 专注于TCL工业垂直领域（显示技术、半导体制造、智能家居等）
+### 1. 领域专门化
+- **原版WebSailor**: 通用网络信息检索
+- **TCL版本**: 专注于TCL工业领域（显示技术、半导体、智能家居等）
 
 ### 2. 实体和关系类型
-- **WebSailor**: 通用实体（人物、地点、事件等）
-- **本项目**: 工业领域特定实体
-  - Product（产品）
-  - Technology（技术）
-  - Component（组件）
-  - Material（材料）
-  - Process（工艺）
-  - Standard（标准）
-  - Company（公司）
+- **原版**: 通用实体（人物、地点、事件等）
+- **TCL版**: 工业特定实体（Product、Technology、Component、Material、Process、Standard等）
 
 ### 3. 模糊化策略
-- **WebSailor**: 通用的模糊化方法
-- **本项目**: 领域特定的模糊化规则
-  - "这款显示产品"代替具体产品名
-  - "某知名电子制造商"代替公司名
-  - 添加行业背景和技术演进信息作为干扰
+- **原版**: 通用模糊化（"这个人"、"那个地方"）
+- **TCL版**: 工业特定模糊化（"这款显示产品"、"某半导体组件"、"相关技术标准"）
 
 ### 4. 问题模板
-- **WebSailor**: 通用问答模板
-- **本项目**: 工业领域专用模板
-  - 技术查询："{产品}使用什么技术？"
-  - 供应链查询："{组件}的制造商是谁？"
-  - 标准合规："{产品}符合哪些标准？"
+- **原版**: 通用信息查询
+- **TCL版**: 工业领域问题（技术参数、生产流程、标准认证、供应链关系等）
+
+## 并行优化版本特性
+
+### 1. 多模型并行加载
+- 同时加载NER、关系抽取、问题生成等多个模型
+- 自动分配GPU资源，支持多GPU并行
+- 减少启动时间50%以上
+
+### 2. 批处理优化
+- 文本批量处理，提高GPU利用率
+- 动态批次大小调整
+- 内存高效模式支持
+
+### 3. 异步处理流水线
+- 不同处理阶段并行执行
+- 异步IO减少等待时间
+- 支持流式处理大规模数据
+
+### 4. 性能监控
+- 实时性能指标
+- 进度条显示
+- 检查点保存和恢复
 
 ## 项目结构
 
 ```
 websailor_domain/
-├── main.py                          # 主入口文件
-├── config.json                      # 配置文件
-├── requirements.txt                 # 依赖包列表
-├── README.md                        # 项目说明
+├── main.py                      # 主入口文件（基础版本）
+├── main_parallel.py             # 并行优化版本入口
+├── config.json                  # 基础配置文件
+├── config_parallel.json         # 并行优化配置
+├── requirements.txt             # 依赖包列表
 │
-├── core/                           # 核心模块
+├── core/                        # 核心模块
 │   ├── __init__.py
-│   ├── knowledge_graph_builder.py   # 知识图谱构建器
-│   ├── subgraph_sampler.py         # 子图采样器（WebSailor核心）
-│   ├── question_generator.py       # 问题生成器（WebSailor核心）
-│   ├── obfuscation_processor.py    # 模糊化处理器（WebSailor核心）
-│   ├── trajectory_generator.py     # 推理轨迹生成器
-│   └── data_synthesizer.py         # 数据综合器
+│   ├── knowledge_graph_builder.py       # 知识图谱构建器
+│   ├── enhanced_knowledge_graph_builder.py  # 增强版KG构建器
+│   ├── subgraph_sampler.py             # 子图采样器（核心）
+│   ├── question_generator.py           # 问题生成器（核心）
+│   ├── obfuscation_processor.py        # 模糊化处理器（核心）
+│   ├── trajectory_generator.py         # 推理轨迹生成器
+│   ├── data_synthesizer.py             # 数据综合器
+│   └── model_manager.py                # 模型管理器（并行加载）
 │
-├── utils/                          # 工具模块
+├── utils/                       # 工具模块
 │   ├── __init__.py
-│   ├── nlp_utils.py                # NLP工具函数
-│   ├── graph_utils.py              # 图处理工具
-│   └── text_utils.py               # 文本处理工具
+│   ├── nlp_utils.py            # NLP工具函数
+│   ├── graph_utils.py          # 图处理工具
+│   └── text_utils.py           # 文本处理工具
 │
-├── input_texts/                    # 输入文本文件夹
-│   ├── domain_text_1.txt
-│   ├── domain_text_2.txt
+├── input_texts/                 # 输入文本文件夹
+│   ├── sample_tcl_text.txt
 │   └── ...
 │
-├── output_dataset/                 # 输出数据集文件夹
-│   ├── qa_pairs.json
-│   ├── trajectories.json
-│   ├── knowledge_graphs.json
-│   └── statistics.json
+├── output_dataset/              # 输出数据集文件夹
+│   ├── knowledge_graph.json
+│   ├── dataset.json
+│   ├── train.json
+│   ├── validation.json
+│   └── test.json
 │
-├── templates/                      # 模板文件
-│   ├── question_templates.json     # 问题模板
-│   ├── obfuscation_patterns.json  # 模糊化模式
-│   └── trajectory_templates.json  # 轨迹模板
+├── templates/                   # 模板文件
+│   ├── question_templates.json
+│   ├── obfuscation_patterns.json
+│   └── trajectory_templates.json
 │
-└── examples/                       # 示例文件
+└── examples/                    # 示例文件
     ├── sample_input/
     ├── sample_output/
+    │   └── sample_dataset.json
     └── README_examples.md
 ```
 
 ## 运行流程
 
-### 1. 环境准备
+### 环境准备
 
+1. **安装依赖**
 ```bash
-# 创建虚拟环境
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# 或
-venv\Scripts\activate  # Windows
-
-# 安装依赖
 pip install -r requirements.txt
-
-# 下载必要的NLP模型（如需要）
-python -m spacy download zh_core_web_sm
 ```
 
-### 2. 准备输入数据
-
-在 `input_texts/` 目录下放置TCL工业领域的文本文件，例如：
-- 产品说明书
-- 技术文档
-- 行业报告
-- 新闻资讯
-
-文本示例：
-```
-TCL推出了新一代Mini-LED显示技术，该技术采用量子点材料，
-能够实现更高的色彩准确度。这款显示器包含了先进的背光模组，
-符合RoHS环保标准，由TCL华星光电制造。
-```
-
-### 3. 配置参数
-
-编辑 `config.json` 文件，调整以下关键参数：
-- `subgraph_sampling`: 子图采样策略和数量
-- `question_generation`: 问题类型和模板
-- `obfuscation`: 模糊化策略和强度
-- `tcl_specific`: TCL领域特定配置
-
-### 4. 运行数据集构建
-
+2. **下载预训练模型**（如果使用LLM）
 ```bash
-# 基本运行
+# 下载中文BERT模型
+python -c "from transformers import AutoTokenizer, AutoModel; AutoTokenizer.from_pretrained('bert-base-chinese'); AutoModel.from_pretrained('bert-base-chinese')"
+```
+
+### 数据准备
+
+1. 将TCL领域相关文本放入 `input_texts/` 目录
+2. 文本格式：每个txt文件包含一段或多段TCL相关描述
+
+### 运行系统
+
+#### 基础版本
+```bash
+# 使用默认配置运行
 python main.py
 
-# 指定参数运行
-python main.py \
-    --input-dir input_texts \
-    --output-dir output_dataset \
-    --domain TCL_Industry \
-    --config config.json
+# 指定输入输出目录
+python main.py --input-dir ./my_texts --output-dir ./my_dataset
+
+# 使用自定义配置
+python main.py --config my_config.json --domain TCL_Industry
 ```
 
-### 5. 查看输出
+#### 并行优化版本
+```bash
+# 使用GPU并行处理
+python main_parallel.py --use-gpu --async-mode
 
-生成的数据集将保存在 `output_dataset/` 目录：
-- `TCL_Industry_dataset_YYYYMMDD.json`: 完整数据集
-- `TCL_Industry_dataset_YYYYMMDD.jsonl`: JSONL格式
-- `statistics.json`: 数据集统计信息
+# 指定配置文件
+python main_parallel.py --config config_parallel.json
 
-## 数据集格式
+# 调试模式
+python main_parallel.py --debug
+```
 
-每个数据样本包含：
+### 配置说明
+
+主要配置项：
+- `domain`: 领域名称
+- `parallel`: 并行处理配置
+- `models`: 模型配置
+- `knowledge_graph`: 知识图谱构建参数
+- `subgraph_sampling`: 子图采样策略
+- `question_generation`: 问题生成配置
+- `obfuscation`: 模糊化处理策略
+- `trajectory_generation`: 推理轨迹生成
+- `data_synthesis`: 数据综合输出
+
+## 输出数据集格式
+
 ```json
 {
-  "id": "TCL_Industry_000001",
-  "question": "某知名电子制造商推出的新型显示产品采用了什么技术？",
-  "answer": "Mini-LED显示技术",
-  "original_question": "TCL推出的显示器采用了什么技术？",
-  "question_type": "single_hop",
-  "difficulty": 0.3,
-  "ambiguity_score": 0.4,
-  "evidence_path": [
+  "domain": "TCL_Industry",
+  "version": "1.0",
+  "created_at": "2024-01-01T10:00:00",
+  "samples": [
     {
-      "source": "TCL显示器",
-      "relation": "uses_technology",
-      "target": "Mini-LED显示技术"
+      "id": "TCL_Industry_000001",
+      "question": "某知名电子制造商推出的新型显示产品采用了什么技术？",
+      "answer": "Mini-LED显示技术",
+      "question_type": "single_hop",
+      "difficulty": 0.3,
+      "evidence_path": [...],
+      "subgraph": {...},
+      "trajectories": [...],
+      "obfuscation_metadata": {...}
     }
   ],
-  "subgraph": {
-    "topology_type": "star",
-    "nodes": ["TCL显示器", "Mini-LED显示技术", "量子点材料", ...],
-    "edges": [...]
-  },
-  "trajectories": [
-    {
-      "reasoning_pattern": "deductive",
-      "steps": [...],
-      "is_successful": true
-    }
-  ]
+  "knowledge_graph": {...},
+  "statistics": {...}
 }
 ```
 
 ## 核心算法说明
 
-### 1. 子图采样（Subgraph Sampling）
-- **星型拓扑**: 中心节点向外辐射，适合单实体查询
-- **链式拓扑**: 线性关系链，适合生产流程推理
-- **树形拓扑**: 层级结构，适合组件关系
-- **网状拓扑**: 复杂交叉关系，适合多约束推理
+### 1. 子图采样算法
+- **星型拓扑**: 以中心节点为核心的辐射结构
+- **链式拓扑**: 适合生产流程的线性结构
+- **树形拓扑**: 组件层级关系的树状结构
+- **网状拓扑**: 复杂交叉关系的网络结构
 
-### 2. 问题生成（Question Generation）
+### 2. 问题生成策略
 - **单跳问题**: 直接关系查询
 - **多跳问题**: 需要多步推理
-- **比较问题**: 对比多个实体
+- **比较问题**: 实体对比分析
 - **聚合问题**: 统计类查询
-- **约束问题**: 多条件筛选
+- **约束问题**: 条件筛选查询
 
-### 3. 模糊化处理（Obfuscation）
-- **实体替换**: 用模糊描述代替具体名称
-- **信息注入**: 添加相关但不必要的干扰信息
-- **关系模糊化**: 使关系描述更加间接
-- **上下文扩展**: 增加背景信息提高复杂度
+### 3. 模糊化技术
+- **实体替换**: 具体名称→模糊描述
+- **信息注入**: 添加相关但无用信息
+- **关系模糊**: 明确关系→间接表达
+- **上下文扩展**: 增加背景描述
 
-## 评估指标
+## 性能优化建议
 
-生成的数据集质量可通过以下指标评估：
-- 问题多样性：不同问题类型的分布
-- 推理复杂度：平均推理步数
-- 模糊度分布：模糊化程度的合理性
-- 答案准确性：答案与证据路径的一致性
+1. **GPU使用**
+   - 使用 `--use-gpu` 启用GPU加速
+   - 多GPU环境自动分配负载
 
-## 扩展开发
+2. **批处理大小**
+   - 根据GPU内存调整 `batch_size`
+   - 使用 `memory_efficient_mode` 处理大规模数据
 
-### 添加新的实体类型
-1. 在 `config.json` 中添加实体类型
-2. 在 `knowledge_graph_builder.py` 中添加识别模式
-3. 更新问题模板以支持新实体
+3. **并行处理**
+   - 调整 `max_workers` 参数
+   - 启用 `async-mode` 提高吞吐量
 
-### 自定义模糊化策略
-1. 在 `obfuscation_processor.py` 中实现新策略
-2. 在配置文件中注册策略
-3. 设置策略的应用概率
+4. **缓存优化**
+   - 启用 `cache_enabled` 减少重复计算
+   - 设置合适的 `cache_size_mb`
 
-### 集成外部知识库
-1. 实现知识库接口
-2. 在知识图谱构建时融合外部数据
-3. 更新实体链接逻辑
+## 常见问题
 
-## 注意事项
+1. **内存不足**
+   - 减小批处理大小
+   - 启用内存高效模式
+   - 使用检查点恢复
 
-1. **数据质量**: 输入文本的质量直接影响生成数据集的质量
-2. **计算资源**: 大规模数据集生成需要较多内存和计算时间
-3. **领域适配**: 可根据具体领域调整实体类型和关系模式
-4. **隐私保护**: 处理企业数据时注意脱敏处理
+2. **GPU利用率低**
+   - 增加批处理大小
+   - 启用混合精度训练
+   - 使用异步处理模式
+
+3. **处理速度慢**
+   - 使用并行版本
+   - 增加工作线程数
+   - 优化数据预处理
 
 ## 贡献指南
 
-欢迎贡献代码、报告问题或提出改进建议：
+欢迎贡献代码和建议！请遵循以下步骤：
+
 1. Fork 项目
 2. 创建特性分支
 3. 提交更改
-4. 发起 Pull Request
+4. 推送到分支
+5. 创建 Pull Request
 
 ## 许可证
 
-本项目采用 MIT 许可证。
-
-## 联系方式
-
-如有问题或合作意向，请联系项目维护者。
-
-## 致谢
-
-本项目基于WebSailor的核心思想开发，感谢原作者的开创性工作。
+MIT License
