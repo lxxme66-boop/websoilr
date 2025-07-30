@@ -1,0 +1,106 @@
+{
+  "project_name": "WebSailor TCL Industrial Domain Dataset",
+  "version": "1.0.0",
+  "domain": "TCL工业垂域",
+  "description": "基于WebSailor方法论的TCL工业垂域数据集构建",
+  
+  "models": {
+    "expert_model": {
+      "path": "THUDM/chatglm-6b",
+      "description": "专家模型（轨迹生成）",
+      "max_length": 2048,
+      "temperature": 0.7,
+      "top_p": 0.95,
+      "device": "cuda"
+    },
+    "qa_generator_model": {
+      "path": "THUDM/chatglm-6b",
+      "description": "QA生成模型",
+      "max_length": 2048,
+      "temperature": 0.8,
+      "top_p": 0.9,
+      "device": "cuda"
+    },
+    "embedding_model": {
+      "path": "sentence-transformers/all-MiniLM-L6-v2",
+      "description": "嵌入模型（相似度计算）",
+      "max_length": 512,
+      "device": "cuda"
+    },
+    "reconstructor_model": {
+      "path": "THUDM/chatglm-6b",
+      "description": "推理重建模型",
+      "max_length": 2048,
+      "temperature": 0.6,
+      "top_p": 0.95,
+      "device": "cuda"
+    },
+    "kg_extractor_model": {
+      "path": "sentence-transformers/all-MiniLM-L6-v2",
+      "description": "知识图谱提取模型",
+      "embedding_dim": 768,
+      "device": "cuda"
+    }
+  },
+  
+  "knowledge_extraction": {
+    "entity_types": ["产品", "技术", "工艺", "材料", "设备", "标准", "专利", "公司", "人员", "项目"],
+    "relation_types": ["使用", "包含", "生产", "研发", "依赖", "改进", "替代", "认证", "合作", "应用于"],
+    "min_confidence": 0.7,
+    "enable_coreference": true,
+    "enable_temporal": true
+  },
+  
+  "subgraph_sampling": {
+    "min_nodes": 3,
+    "max_nodes": 15,
+    "sampling_strategies": ["random_walk", "bfs", "star", "chain", "tree", "cycle", "mixed", "dense", "sparse"],
+    "noise_ratio": 0.1,
+    "edge_probability": 0.8
+  },
+  
+  "question_generation": {
+    "question_types": ["factual", "reasoning", "multi_hop", "comparison", "temporal", "causal", "counterfactual"],
+    "complexity_levels": {
+      "easy": 0.3,
+      "medium": 0.5,
+      "hard": 0.2
+    },
+    "language_patterns": {
+      "zh_cn": 0.7,
+      "en": 0.3
+    }
+  },
+  
+  "dataset_synthesis": {
+    "train_ratio": 0.8,
+    "val_ratio": 0.1,
+    "test_ratio": 0.1,
+    "quality_checks": {
+      "min_question_length": 10,
+      "max_question_length": 200,
+      "answer_validation": true,
+      "diversity_threshold": 0.8
+    }
+  },
+  
+  "tcl_specific": {
+    "focus_areas": ["显示技术", "智能制造", "半导体", "新材料", "AI应用"],
+    "terminology_db": "configs/tcl_terms.json",
+    "industry_standards": ["GB", "IEC", "ISO", "IEEE"],
+    "patent_categories": ["发明专利", "实用新型", "外观设计"]
+  },
+  
+  "output_settings": {
+    "formats": ["json", "jsonl", "csv"],
+    "include_metadata": true,
+    "save_intermediate": true,
+    "visualization": true
+  },
+  
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "file": "logs/websailor_tcl.log"
+  }
+}

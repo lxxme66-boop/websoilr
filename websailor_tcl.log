@@ -1,0 +1,180 @@
+2025-07-30 11:41:05,619 - __main__ - INFO - 加载配置文件: websailor_domain/configs/config.yaml
+2025-07-30 11:41:05,619 - __main__ - ERROR - 程序执行失败: [Errno 2] No such file or directory: 'websailor_domain/configs/config.yaml'
+Traceback (most recent call last):
+  File "/workspace/websailor_domain/main.py", line 106, in main
+    config = load_config(args.config)
+  File "/workspace/websailor_domain/main.py", line 30, in load_config
+    with open(config_path, 'r', encoding='utf-8') as f:
+         ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'websailor_domain/configs/config.yaml'
+2025-07-30 11:41:42,534 - __main__ - INFO - 加载配置文件: websailor_domain/config.json
+2025-07-30 11:41:42,534 - __main__ - ERROR - 输入目录不存在: websailor_domain/data/raw
+2025-07-30 11:42:01,837 - __main__ - INFO - 加载配置文件: websailor_domain/config.json
+2025-07-30 11:42:01,837 - __main__ - INFO - 初始化数据综合器...
+2025-07-30 11:42:01,837 - core.data_synthesizer - INFO - 初始化数据综合器...
+2025-07-30 11:42:01,837 - core.knowledge_graph_builder - INFO - 初始化知识图谱提取模型...
+2025-07-30 11:42:01,837 - __main__ - ERROR - 程序执行失败: Repo id must be in the form 'repo_name' or 'namespace/repo_name': '/mnt/data/LLM/lhy/models/fintuned_embedding/fv6'. Use `repo_type` argument if needed.
+Traceback (most recent call last):
+  File "/home/ubuntu/.local/lib/python3.13/site-packages/transformers/utils/hub.py", line 476, in cached_files
+    hf_hub_download(
+    ~~~~~~~~~~~~~~~^
+        path_or_repo_id,
+        ^^^^^^^^^^^^^^^^
+    ...<10 lines>...
+        local_files_only=local_files_only,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/ubuntu/.local/lib/python3.13/site-packages/huggingface_hub/utils/_validators.py", line 106, in _inner_fn
+    validate_repo_id(arg_value)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/home/ubuntu/.local/lib/python3.13/site-packages/huggingface_hub/utils/_validators.py", line 154, in validate_repo_id
+    raise HFValidationError(
+    ...<2 lines>...
+    )
+huggingface_hub.errors.HFValidationError: Repo id must be in the form 'repo_name' or 'namespace/repo_name': '/mnt/data/LLM/lhy/models/fintuned_embedding/fv6'. Use `repo_type` argument if needed.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/workspace/websailor_domain/main.py", line 120, in main
+    synthesizer = DataSynthesizer(config)
+  File "/workspace/websailor_domain/core/data_synthesizer.py", line 36, in __init__
+    self.kg_builder = KnowledgeGraphBuilder(config)
+                      ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^
+  File "/workspace/websailor_domain/core/knowledge_graph_builder.py", line 73, in __init__
+    self._initialize_models()
+    ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/workspace/websailor_domain/core/knowledge_graph_builder.py", line 84, in _initialize_models
+    self.tokenizer = AutoTokenizer.from_pretrained(model_path)
+                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "/home/ubuntu/.local/lib/python3.13/site-packages/transformers/models/auto/tokenization_auto.py", line 1047, in from_pretrained
+    tokenizer_config = get_tokenizer_config(pretrained_model_name_or_path, **kwargs)
+  File "/home/ubuntu/.local/lib/python3.13/site-packages/transformers/models/auto/tokenization_auto.py", line 879, in get_tokenizer_config
+    resolved_config_file = cached_file(
+        pretrained_model_name_or_path,
+    ...<12 lines>...
+        _commit_hash=commit_hash,
+    )
+  File "/home/ubuntu/.local/lib/python3.13/site-packages/transformers/utils/hub.py", line 318, in cached_file
+    file = cached_files(path_or_repo_id=path_or_repo_id, filenames=[filename], **kwargs)
+  File "/home/ubuntu/.local/lib/python3.13/site-packages/transformers/utils/hub.py", line 529, in cached_files
+    _get_cache_file_to_return(path_or_repo_id, filename, cache_dir, revision, repo_type)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.local/lib/python3.13/site-packages/transformers/utils/hub.py", line 144, in _get_cache_file_to_return
+    resolved_file = try_to_load_from_cache(
+        path_or_repo_id, full_filename, cache_dir=cache_dir, revision=revision, repo_type=repo_type
+    )
+  File "/home/ubuntu/.local/lib/python3.13/site-packages/huggingface_hub/utils/_validators.py", line 106, in _inner_fn
+    validate_repo_id(arg_value)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/home/ubuntu/.local/lib/python3.13/site-packages/huggingface_hub/utils/_validators.py", line 154, in validate_repo_id
+    raise HFValidationError(
+    ...<2 lines>...
+    )
+huggingface_hub.errors.HFValidationError: Repo id must be in the form 'repo_name' or 'namespace/repo_name': '/mnt/data/LLM/lhy/models/fintuned_embedding/fv6'. Use `repo_type` argument if needed.
+2025-07-30 11:42:45,462 - __main__ - INFO - 加载配置文件: websailor_domain/config_test.json
+2025-07-30 11:42:45,463 - __main__ - INFO - 初始化数据综合器...
+2025-07-30 11:42:45,463 - core.data_synthesizer - INFO - 初始化数据综合器...
+2025-07-30 11:42:45,463 - core.knowledge_graph_builder - INFO - 初始化知识图谱提取模型...
+2025-07-30 11:42:45,463 - __main__ - ERROR - 程序执行失败: 'kg_extractor_model'
+Traceback (most recent call last):
+  File "/workspace/websailor_domain/main.py", line 120, in main
+    synthesizer = DataSynthesizer(config)
+  File "/workspace/websailor_domain/core/data_synthesizer.py", line 36, in __init__
+    self.kg_builder = KnowledgeGraphBuilder(config)
+                      ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^
+  File "/workspace/websailor_domain/core/knowledge_graph_builder.py", line 73, in __init__
+    self._initialize_models()
+    ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/workspace/websailor_domain/core/knowledge_graph_builder.py", line 83, in _initialize_models
+    model_path = self.config['models']['kg_extractor_model']['path']
+                 ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+KeyError: 'kg_extractor_model'
+2025-07-30 11:43:22,032 - __main__ - INFO - 加载配置文件: websailor_domain/config_test.json
+2025-07-30 11:43:22,032 - __main__ - INFO - 初始化数据综合器...
+2025-07-30 11:43:22,032 - core.data_synthesizer - INFO - 初始化数据综合器...
+2025-07-30 11:43:22,032 - core.knowledge_graph_builder - INFO - 初始化知识图谱提取模型...
+2025-07-30 11:43:24,719 - core.knowledge_graph_builder - WARNING - 未找到中文spaCy模型，将使用基础分词
+2025-07-30 11:43:24,719 - jieba - DEBUG - Building prefix dict from the default dictionary ...
+2025-07-30 11:43:25,052 - jieba - DEBUG - Dumping model to file cache /tmp/jieba.cache
+2025-07-30 11:43:25,088 - jieba - DEBUG - Loading model cost 0.369 seconds.
+2025-07-30 11:43:25,088 - jieba - DEBUG - Prefix dict has been built successfully.
+2025-07-30 11:43:25,089 - core.question_generator - INFO - 加载QA生成模型: THUDM/chatglm-6b
+2025-07-30 11:43:40,299 - core.question_generator - WARNING - 无法加载指定模型，使用默认模型: The repository THUDM/chatglm-6b contains custom code which must be executed to correctly load the model. You can inspect the repository content at https://hf.co/THUDM/chatglm-6b .
+ You can inspect the repository content at https://hf.co/THUDM/chatglm-6b.
+Please pass the argument `trust_remote_code=True` to allow custom code to be run.
+2025-07-30 11:43:55,499 - __main__ - ERROR - 程序执行失败: The repository THUDM/chatglm-6b contains custom code which must be executed to correctly load the model. You can inspect the repository content at https://hf.co/THUDM/chatglm-6b .
+ You can inspect the repository content at https://hf.co/THUDM/chatglm-6b.
+Please pass the argument `trust_remote_code=True` to allow custom code to be run.
+Traceback (most recent call last):
+  File "/home/ubuntu/.local/lib/python3.13/site-packages/transformers/dynamic_module_utils.py", line 723, in resolve_trust_remote_code
+    answer = input(
+        f"{error_message} You can inspect the repository content at https://hf.co/{model_name}.\n"
+        f"You can avoid this prompt in future by passing the argument `trust_remote_code=True`.\n\n"
+        f"Do you wish to run the custom code? [y/N] "
+    )
+  File "/home/ubuntu/.local/lib/python3.13/site-packages/transformers/dynamic_module_utils.py", line 662, in _raise_timeout_error
+    raise ValueError(
+    ...<2 lines>...
+    )
+ValueError: Loading this model requires you to execute custom code contained in the model repository on your local machine. Please set the option `trust_remote_code=True` to permit loading of this model.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/workspace/websailor_domain/core/question_generator.py", line 56, in _load_qa_generator
+    self.tokenizer = AutoTokenizer.from_pretrained(model_path)
+                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "/home/ubuntu/.local/lib/python3.13/site-packages/transformers/models/auto/tokenization_auto.py", line 1091, in from_pretrained
+    trust_remote_code = resolve_trust_remote_code(
+        trust_remote_code, pretrained_model_name_or_path, has_local_code, has_remote_code, upstream_repo
+    )
+  File "/home/ubuntu/.local/lib/python3.13/site-packages/transformers/dynamic_module_utils.py", line 735, in resolve_trust_remote_code
+    raise ValueError(
+    ...<2 lines>...
+    )
+ValueError: The repository THUDM/chatglm-6b contains custom code which must be executed to correctly load the model. You can inspect the repository content at https://hf.co/THUDM/chatglm-6b .
+ You can inspect the repository content at https://hf.co/THUDM/chatglm-6b.
+Please pass the argument `trust_remote_code=True` to allow custom code to be run.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/ubuntu/.local/lib/python3.13/site-packages/transformers/dynamic_module_utils.py", line 723, in resolve_trust_remote_code
+    answer = input(
+        f"{error_message} You can inspect the repository content at https://hf.co/{model_name}.\n"
+        f"You can avoid this prompt in future by passing the argument `trust_remote_code=True`.\n\n"
+        f"Do you wish to run the custom code? [y/N] "
+    )
+  File "/home/ubuntu/.local/lib/python3.13/site-packages/transformers/dynamic_module_utils.py", line 662, in _raise_timeout_error
+    raise ValueError(
+    ...<2 lines>...
+    )
+ValueError: Loading this model requires you to execute custom code contained in the model repository on your local machine. Please set the option `trust_remote_code=True` to permit loading of this model.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/workspace/websailor_domain/main.py", line 120, in main
+    synthesizer = DataSynthesizer(config)
+  File "/workspace/websailor_domain/core/data_synthesizer.py", line 38, in __init__
+    self.question_generator = QuestionGenerator(config)
+                              ~~~~~~~~~~~~~~~~~^^^^^^^^
+  File "/workspace/websailor_domain/core/question_generator.py", line 36, in __init__
+    self._load_qa_generator()
+    ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/workspace/websailor_domain/core/question_generator.py", line 66, in _load_qa_generator
+    self.tokenizer = AutoTokenizer.from_pretrained("THUDM/chatglm-6b")
+                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.local/lib/python3.13/site-packages/transformers/models/auto/tokenization_auto.py", line 1091, in from_pretrained
+    trust_remote_code = resolve_trust_remote_code(
+        trust_remote_code, pretrained_model_name_or_path, has_local_code, has_remote_code, upstream_repo
+    )
+  File "/home/ubuntu/.local/lib/python3.13/site-packages/transformers/dynamic_module_utils.py", line 735, in resolve_trust_remote_code
+    raise ValueError(
+    ...<2 lines>...
+    )
+ValueError: The repository THUDM/chatglm-6b contains custom code which must be executed to correctly load the model. You can inspect the repository content at https://hf.co/THUDM/chatglm-6b .
+ You can inspect the repository content at https://hf.co/THUDM/chatglm-6b.
+Please pass the argument `trust_remote_code=True` to allow custom code to be run.

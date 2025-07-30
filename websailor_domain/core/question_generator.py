@@ -1,767 +1,1216 @@
 """
-问题生成器 - 修复版本
-修复了原版中的问题：
-1. 增强了错误日志
-2. 修复了格式兼容性问题
-3. 改进了错误处理
-4. 优化了质量过滤
+问题生成器 - WebSailor核心模块（优化版）
+基于子图中节点与关系，设计QA问题
+覆盖多种问题类型：事实型、比较型、推理型、多跳型等
+增加了问题合理性验证和优化机制
 """
 
 import json
 import logging
 import random
-from typing import List, Dict, Tuple, Optional, Union, Any
-import networkx as nx
+from typing import List, Dict, Tuple, Optional
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 from tqdm import tqdm
+import networkx as nx
 
 logger = logging.getLogger(__name__)
 
-
 class QuestionGenerator:
     """
-    问题生成器 - 修复版
-    WebSailor核心组件：基于子图生成多种类型的问题
+    WebSailor核心：问题生成器（优化版）
+    基于子图生成多样化的问题，覆盖不同难度和类型
+    包含问题合理性验证和优化机制
     """
     
-    def __init__(self, config: Dict):
+    def __init__(self, config: dict):
         self.config = config
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.qg_config = config.get('question_generation', {})
         
         # 问题类型
-        self.question_types = config.get('data_settings', {}).get(
-            'question_types',
-            ['factual', 'reasoning', 'multi_hop', 'comparative', 'causal']
-        )
+        self.question_types = self.qg_config.get('question_types', [])
+        self.complexity_levels = self.qg_config.get('complexity_levels', {})
+        self.language_patterns = self.qg_config.get('language_patterns', {})
         
-        # 初始化模型
-        self._initialize_model()
+        # 加载QA生成模型
+        self._load_qa_generator()
         
-        # 加载问题模板
-        self._load_question_templates()
+        # TCL特定配置
+        self.tcl_config = config.get('tcl_specific', {})
         
-        # 合理性阈值 - 降低以确保能生成问题
-        self.validity_threshold = 0.5
+        # 问题模板
+        self._init_question_templates()
         
-        # 调试模式
-        self.debug_mode = True
+        # 合理性阈值
+        self.validity_threshold = 0.7
+        self.max_optimization_attempts = 2
         
-    def _initialize_model(self):
-        """初始化问题生成模型"""
-        logger.info("初始化问题生成模型...")
-        
+    def _load_qa_generator(self):
+        """加载QA生成模型"""
         model_config = self.config['models']['qa_generator_model']
         model_path = model_config['path']
         
         logger.info(f"加载QA生成模型: {model_path}")
         
         try:
-            self.tokenizer = AutoTokenizer.from_pretrained(model_path)
+            self.tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
             self.model = AutoModelForCausalLM.from_pretrained(
                 model_path,
                 torch_dtype=torch.float16,
-                device_map="auto"
+                device_map="auto",
+                trust_remote_code=True
             )
-            
-            # 设置pad token
-            if self.tokenizer.pad_token is None:
-                self.tokenizer.pad_token = self.tokenizer.eos_token
-            
-            self.model.eval()
-            
-            # 生成配置
-            self.generation_config = {
-                'max_length': model_config.get('max_length', 2048),
-                'temperature': model_config.get('temperature', 0.7),
-                'top_p': model_config.get('top_p', 0.9),
-                'do_sample': True,
-                'pad_token_id': self.tokenizer.pad_token_id
-            }
-            
-            logger.info(f"模型加载成功，使用设备: {self.device}")
-            
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         except Exception as e:
-            logger.error(f"模型加载失败: {e}")
-            raise
+            logger.warning(f"无法加载指定模型，使用默认模型: {e}")
+            # 使用较小的默认模型
+            self.tokenizer = AutoTokenizer.from_pretrained("THUDM/chatglm-6b", trust_remote_code=True)
+            self.model = AutoModelForCausalLM.from_pretrained(
+                "THUDM/chatglm-6b",
+                torch_dtype=torch.float16,
+                device_map="auto",
+                trust_remote_code=True
+            )
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            
+        self.model.eval()
         
-    def _load_question_templates(self):
-        """加载问题模板"""
-        # TCL工业垂域问题模板
+        # 设置生成参数
+        self.max_length = model_config.get('max_length', 4096)
+        self.temperature = model_config.get('temperature', 0.8)
+        
+    def _init_question_templates(self):
+        """初始化问题模板"""
         self.question_templates = {
             'factual': {
-                'zh': [
-                    "{entity}的主要特征是什么？",
-                    "{entity}包含哪些组件？",
-                    "什么是{entity}？",
-                    "{entity}的技术参数是什么？",
-                    "{entity}使用了什么技术？",
-                    "{entity}与其他组件的关系是什么？"
+                'zh_cn': [
+                    "{entity}使用了什么{relation_type}？",
+                    "{entity}的{attribute}是什么？",
+                    "哪个{entity_type}与{entity}有{relation}关系？",
+                    "{entity1}和{entity2}之间的关系是什么？"
                 ],
                 'en': [
-                    "What are the main features of {entity}?",
-                    "What components does {entity} contain?",
-                    "What is {entity}?",
-                    "What are the technical parameters of {entity}?",
-                    "What technology does {entity} use?",
-                    "What is the relationship between {entity} and other components?"
+                    "What {relation_type} does {entity} use?",
+                    "What is the {attribute} of {entity}?",
+                    "Which {entity_type} has {relation} relationship with {entity}?",
+                    "What is the relationship between {entity1} and {entity2}?"
+                ]
+            },
+            'comparison': {
+                'zh_cn': [
+                    "{entity1}和{entity2}在{aspect}方面有什么区别？",
+                    "比较{entity1}和{entity2}的{attribute}。",
+                    "{entity_list}中哪个{criterion}最{superlative}？",
+                    "从{aspect}角度，{entity1}相比{entity2}有什么优势？"
+                ],
+                'en': [
+                    "What are the differences between {entity1} and {entity2} in terms of {aspect}?",
+                    "Compare the {attribute} of {entity1} and {entity2}.",
+                    "Which of {entity_list} is the {superlative} in terms of {criterion}?",
+                    "What advantages does {entity1} have over {entity2} from {aspect} perspective?"
                 ]
             },
             'reasoning': {
-                'zh': [
-                    "如果{entity}发生故障，会有什么影响？",
-                    "为什么需要{entity}？",
-                    "{entity}的工作原理是什么？",
-                    "如何优化{entity}的性能？",
-                    "{entity}在系统中的作用是什么？"
+                'zh_cn': [
+                    "如果{condition}，那么{entity}会如何影响{target}？",
+                    "基于{evidence}，可以推断出{entity}的什么特性？",
+                    "为什么{entity}需要{requirement}？",
+                    "{entity}的{attribute}如何影响其{performance}？"
                 ],
                 'en': [
-                    "What would be the impact if {entity} fails?",
-                    "Why is {entity} needed?",
-                    "What is the working principle of {entity}?",
-                    "How to optimize the performance of {entity}?",
-                    "What is the role of {entity} in the system?"
+                    "If {condition}, how would {entity} affect {target}?",
+                    "Based on {evidence}, what characteristics of {entity} can be inferred?",
+                    "Why does {entity} need {requirement}?",
+                    "How does the {attribute} of {entity} affect its {performance}?"
                 ]
             },
             'multi_hop': {
-                'zh': [
-                    "{entity1}和{entity2}之间有什么联系？",
-                    "从{entity1}到{entity2}的处理流程是什么？",
-                    "{entity1}如何影响{entity2}？",
-                    "请描述包含{entity1}和{entity2}的完整系统。"
+                'zh_cn': [
+                    "{entity1}通过什么中间{entity_type}与{entity2}产生联系？",
+                    "从{start}到{end}的{path_type}路径是什么？",
+                    "{entity}的{relation1}的{relation2}是什么？",
+                    "哪些{entity_type}同时与{entity1}和{entity2}有{relation}关系？"
                 ],
                 'en': [
-                    "What is the connection between {entity1} and {entity2}?",
-                    "What is the process flow from {entity1} to {entity2}?",
-                    "How does {entity1} affect {entity2}?",
-                    "Please describe the complete system containing {entity1} and {entity2}."
-                ]
-            },
-            'comparative': {
-                'zh': [
-                    "{entity1}和{entity2}的主要区别是什么？",
-                    "比较{entity1}和{entity2}的性能。",
-                    "{entity1}相比{entity2}有什么优势？",
-                    "在什么情况下应该选择{entity1}而不是{entity2}？"
-                ],
-                'en': [
-                    "What are the main differences between {entity1} and {entity2}?",
-                    "Compare the performance of {entity1} and {entity2}.",
-                    "What advantages does {entity1} have over {entity2}?",
-                    "When should {entity1} be chosen over {entity2}?"
-                ]
-            },
-            'causal': {
-                'zh': [
-                    "{entity1}如何导致{entity2}？",
-                    "什么原因会导致{entity}出现问题？",
-                    "{entity}的变化会产生什么影响？",
-                    "如果改变{entity1}，{entity2}会如何变化？"
-                ],
-                'en': [
-                    "How does {entity1} lead to {entity2}?",
-                    "What causes problems with {entity}?",
-                    "What impact will changes in {entity} have?",
-                    "If {entity1} is changed, how will {entity2} change?"
+                    "Through which intermediate {entity_type} are {entity1} and {entity2} connected?",
+                    "What is the {path_type} path from {start} to {end}?",
+                    "What is the {relation2} of {entity}'s {relation1}?",
+                    "Which {entity_type} have {relation} relationships with both {entity1} and {entity2}?"
                 ]
             }
         }
         
-    def generate_questions(self, subgraphs: List[Any], 
-                          questions_per_subgraph: int = 5) -> List[Dict]:
-        """
-        为子图生成问题
+    def generate_questions(self, subgraphs: List[nx.DiGraph]) -> List[Dict]:
+        """为子图列表生成问题"""
+        all_qa_pairs = []
         
-        Args:
-            subgraphs: 子图列表（字典格式）
-            questions_per_subgraph: 每个子图生成的问题数
+        for subgraph in tqdm(subgraphs, desc="生成问题"):
+            # 分析子图特征
+            subgraph_features = self._analyze_subgraph(subgraph)
             
-        Returns:
-            List[Dict]: 生成的问题列表
-        """
-        logger.info(f"开始为{len(subgraphs)}个子图生成问题...")
-        
-        if not subgraphs:
-            logger.warning("没有提供子图")
-            return []
-        
-        all_questions = []
-        successful_subgraphs = 0
-        
-        for i, subgraph in enumerate(tqdm(subgraphs, desc="生成问题")):
-            try:
-                # 记录子图信息
-                if self.debug_mode:
-                    logger.debug(f"处理子图 {i}: nodes={len(subgraph.get('nodes', []))}, "
-                               f"edges={len(subgraph.get('edges', []))}")
-                
-                # 验证子图格式
-                if not self._validate_subgraph(subgraph):
-                    logger.warning(f"子图 {i} 格式无效，跳过")
-                    continue
-                
-                # 为子图生成问题
-                questions = self._generate_questions_for_subgraph(
-                    subgraph, questions_per_subgraph
+            # 根据子图特征选择合适的问题类型
+            suitable_types = self._select_question_types(subgraph_features)
+            
+            # 为每种问题类型生成问题
+            for q_type in suitable_types:
+                qa_pairs = self._generate_questions_for_type(
+                    subgraph, q_type, subgraph_features
                 )
-                
-                if questions:
-                    all_questions.extend(questions)
-                    successful_subgraphs += 1
-                    if self.debug_mode:
-                        logger.debug(f"子图 {i} 成功生成 {len(questions)} 个问题")
-                else:
-                    logger.warning(f"子图 {i} 未能生成问题")
-                    
-            except Exception as e:
-                logger.error(f"处理子图 {i} 时出错: {str(e)}", exc_info=True)
-                continue
+                all_qa_pairs.extend(qa_pairs)
         
-        logger.info(f"成功处理 {successful_subgraphs}/{len(subgraphs)} 个子图")
+        # 后处理和质量检查
+        filtered_qa_pairs = self._filter_qa_pairs(all_qa_pairs)
         
-        # 质量过滤
-        filtered_questions = self._filter_questions(all_questions)
+        logger.info(f"共生成 {len(filtered_qa_pairs)} 个高质量QA对")
         
-        logger.info(f"质量过滤: {len(all_questions)} -> {len(filtered_questions)}")
-        logger.info(f"共生成 {len(filtered_questions)} 个高质量QA对")
-        
-        return filtered_questions
+        return filtered_qa_pairs
     
-    def _validate_subgraph(self, subgraph: Dict) -> bool:
-        """验证子图格式"""
-        if not isinstance(subgraph, dict):
-            return False
-            
-        if 'nodes' not in subgraph or 'edges' not in subgraph:
-            return False
-            
-        if not subgraph['nodes']:
-            return False
-            
-        # 确保节点有必要的属性
-        for node in subgraph['nodes']:
-            if 'id' not in node:
-                return False
-            # 如果没有type，添加默认值
-            if 'type' not in node:
-                node['type'] = 'entity'
-                
-        # 确保边有必要的属性
-        for edge in subgraph['edges']:
-            if 'source' not in edge or 'target' not in edge:
-                return False
-            # 统一使用relation作为关系属性
-            if 'relation' not in edge and 'type' in edge:
-                edge['relation'] = edge['type']
-            elif 'relation' not in edge:
-                edge['relation'] = '相关'
-                
-        return True
-    
-    def _generate_questions_for_subgraph(self, subgraph: Dict, 
-                                       num_questions: int) -> List[Dict]:
-        """为单个子图生成问题"""
-        questions = []
-        
-        # 分析子图特征
-        features = self._analyze_subgraph(subgraph)
-        
-        # 根据子图特征选择合适的问题类型
-        suitable_types = self._select_question_types(features)
-        
-        if self.debug_mode:
-            logger.debug(f"子图特征: {features}")
-            logger.debug(f"选择的问题类型: {suitable_types}")
-        
-        # 尝试生成指定数量的问题
-        attempts = 0
-        max_attempts = num_questions * 3
-        
-        while len(questions) < num_questions and attempts < max_attempts:
-            attempts += 1
-            
-            # 随机选择问题类型
-            q_type = random.choice(suitable_types)
-            
-            # 生成问题
-            question = self._generate_question(subgraph, q_type, features)
-            
-            if question:
-                questions.append(question)
-                if self.debug_mode:
-                    logger.debug(f"成功生成{q_type}类型问题: {question['question'][:50]}...")
-            else:
-                if self.debug_mode:
-                    logger.debug(f"生成{q_type}类型问题失败")
-        
-        return questions
-    
-    def _analyze_subgraph(self, subgraph: Dict) -> Dict:
+    def _analyze_subgraph(self, subgraph: nx.DiGraph) -> Dict:
         """分析子图特征"""
-        nodes = subgraph['nodes']
-        edges = subgraph['edges']
+        num_nodes = subgraph.number_of_nodes()
+        num_edges = subgraph.number_of_edges()
         
-        # 统计节点类型
-        node_types = {}
-        for node in nodes:
-            node_type = node.get('type', 'unknown')
-            node_types[node_type] = node_types.get(node_type, 0) + 1
+        # 获取节点类型
+        node_types = set()
+        for node in subgraph.nodes():
+            node_data = subgraph.nodes[node]
+            if 'type' in node_data:
+                node_types.add(node_data['type'])
         
-        # 统计边类型
-        edge_types = {}
-        for edge in edges:
-            edge_type = edge.get('relation', edge.get('type', 'unknown'))
-            edge_types[edge_type] = edge_types.get(edge_type, 0) + 1
+        # 获取关系类型
+        relation_types = set()
+        for u, v, data in subgraph.edges(data=True):
+            if 'relation' in data:
+                relation_types.add(data['relation'])
         
-        # 计算基本特征
         features = {
-            'num_nodes': len(nodes),
-            'num_edges': len(edges),
-            'node_types': node_types,
-            'edge_types': edge_types,
-            'density': len(edges) / (len(nodes) * (len(nodes) - 1)) if len(nodes) > 1 else 0,
-            'has_multiple_types': len(node_types) > 1,
-            'avg_degree': len(edges) * 2 / len(nodes) if len(nodes) > 0 else 0
+            'topology': subgraph.graph.get('topology', 'unknown'),
+            'num_nodes': num_nodes,
+            'num_edges': num_edges,
+            'node_types': list(node_types),
+            'relation_types': list(relation_types),
+            'has_path': 'path' in subgraph.graph,
+            'has_center': 'center' in subgraph.graph,
+            'has_cycle': len(list(nx.simple_cycles(subgraph))) > 0 if subgraph.is_directed() else False,
+            'density': nx.density(subgraph)
         }
         
+        # 识别关键实体
+        features['key_entities'] = self._identify_key_entities(subgraph)
+        
+        # 识别路径模式
+        features['path_patterns'] = self._identify_path_patterns(subgraph)
+        
         return features
+    
+    def _identify_key_entities(self, subgraph: nx.DiGraph) -> List[Dict]:
+        """识别子图中的关键实体"""
+        key_entities = []
+        
+        # 基于度数识别
+        node_degrees = dict(subgraph.degree())
+        
+        # 选择度数最高的节点
+        if node_degrees:
+            sorted_nodes = sorted(node_degrees.items(), key=lambda x: x[1], reverse=True)
+            for node_id, degree in sorted_nodes[:3]:  # 前3个
+                node_data = subgraph.nodes[node_id]
+                key_entities.append({
+                    'id': node_id,
+                    'type': node_data.get('type', 'unknown'),
+                    'degree': degree,
+                    'role': 'hub' if degree > 3 else 'connector'
+                })
+        
+        # 如果有特殊标记的节点
+        if 'center' in subgraph.graph:
+            center_id = subgraph.graph['center']
+            if center_id in subgraph.nodes:
+                node_data = subgraph.nodes[center_id]
+                key_entities.append({
+                    'id': center_id,
+                    'type': node_data.get('type', 'unknown'),
+                    'role': 'center'
+                })
+        
+        return key_entities
+    
+    def _identify_path_patterns(self, subgraph: nx.DiGraph) -> List[Dict]:
+        """识别子图中的路径模式"""
+        patterns = []
+        
+        # 链式路径
+        if 'path' in subgraph.graph:
+            path_nodes = subgraph.graph['path']
+            patterns.append({
+                'type': 'chain',
+                'length': len(path_nodes),
+                'nodes': path_nodes
+            })
+        
+        # 多跳路径（通过边连接）
+        if subgraph.number_of_edges() >= 2:
+            # 简化版：找到一些2跳路径
+            edges = list(subgraph.edges(data=True))
+            for i, (u1, v1, data1) in enumerate(edges):
+                for u2, v2, data2 in edges[i+1:]:
+                    if v1 == u2:
+                        patterns.append({
+                            'type': 'two_hop',
+                            'path': [u1, v1, v2],
+                            'relations': [data1.get('relation', ''), data2.get('relation', '')]
+                        })
+        
+        return patterns
     
     def _select_question_types(self, features: Dict) -> List[str]:
         """根据子图特征选择合适的问题类型"""
         suitable_types = []
         
-        # 所有子图都可以生成事实类问题
-        suitable_types.append('factual')
+        # 基于拓扑选择
+        topology = features['topology']
         
-        # 如果有多个节点，可以生成比较和多跳问题
-        if features['num_nodes'] >= 2:
-            suitable_types.extend(['comparative', 'multi_hop'])
+        if topology == 'chain' or features['has_path']:
+            suitable_types.extend(['multi_hop', 'temporal', 'causal'])
         
-        # 如果有边，可以生成推理和因果问题
-        if features['num_edges'] > 0:
-            suitable_types.extend(['reasoning', 'causal'])
+        if topology == 'star' or features.get('has_center'):
+            suitable_types.extend(['comparison', 'factual'])
+        
+        if topology == 'tree':
+            suitable_types.extend(['reasoning', 'multi_hop'])
+        
+        if topology == 'cycle' or features.get('has_cycle'):
+            suitable_types.extend(['causal', 'reasoning'])
+        
+        # 基于节点数量
+        if features['num_nodes'] >= 5:
+            suitable_types.append('comparison')
+        
+        # 基于密度
+        if features['density'] > 0.3:
+            suitable_types.append('reasoning')
+        
+        # 添加基础类型
+        suitable_types.extend(['factual'])
+        
+        # 根据复杂度分布随机选择
+        complexity_weights = self.complexity_levels
+        if features['num_nodes'] > 8:
+            # 复杂子图，增加复杂问题的权重
+            suitable_types.extend(['counterfactual', 'multi_hop'])
         
         # 去重
         suitable_types = list(set(suitable_types))
         
-        # 确保至少有一种类型
-        if not suitable_types:
-            suitable_types = ['factual']
-        
-        return suitable_types
+        # 限制数量
+        max_types = min(3, len(suitable_types))
+        return random.sample(suitable_types, max_types)
     
-    def _generate_question(self, subgraph: Dict, q_type: str, 
-                          features: Dict) -> Optional[Dict]:
-        """生成特定类型的问题"""
-        try:
-            if q_type == 'factual':
-                return self._generate_factual_question(subgraph, features)
-            elif q_type == 'reasoning':
-                return self._generate_reasoning_question(subgraph, features)
-            elif q_type == 'multi_hop':
-                return self._generate_multihop_question(subgraph, features)
-            elif q_type == 'comparative':
-                return self._generate_comparative_question(subgraph, features)
-            elif q_type == 'causal':
-                return self._generate_causal_question(subgraph, features)
-            else:
-                return self._generate_factual_question(subgraph, features)
-                
-        except Exception as e:
-            logger.error(f"生成{q_type}类型问题失败: {str(e)}", exc_info=True)
-            return None
-    
-    def _generate_factual_question(self, subgraph: Dict, features: Dict) -> Optional[Dict]:
-        """生成事实类问题"""
-        nodes = subgraph['nodes']
-        
-        # 随机选择一个节点
-        if not nodes:
-            return None
-            
-        node = random.choice(nodes)
-        entity = node['id']
+    def _generate_questions_for_type(self, subgraph: nx.DiGraph, 
+                                   q_type: str, features: Dict) -> List[Dict]:
+        """为特定类型生成问题"""
+        qa_pairs = []
         
         # 选择语言
-        lang = random.choice(['zh', 'en'])
+        lang_weights = list(self.language_patterns.values())
+        languages = list(self.language_patterns.keys())
+        selected_lang = random.choices(languages, weights=lang_weights)[0]
         
-        # 选择模板
+        # 根据问题类型生成
+        if q_type == 'factual':
+            qa_pairs.extend(self._generate_factual_questions(
+                subgraph, features, selected_lang
+            ))
+        elif q_type == 'comparison':
+            qa_pairs.extend(self._generate_comparison_questions(
+                subgraph, features, selected_lang
+            ))
+        elif q_type == 'reasoning':
+            qa_pairs.extend(self._generate_reasoning_questions(
+                subgraph, features, selected_lang
+            ))
+        elif q_type == 'multi_hop':
+            qa_pairs.extend(self._generate_multihop_questions(
+                subgraph, features, selected_lang
+            ))
+        
+        return qa_pairs
+    
+    def _generate_factual_questions(self, subgraph: nx.DiGraph, 
+                                  features: Dict, lang: str) -> List[Dict]:
+        """生成事实型问题"""
+        qa_pairs = []
         templates = self.question_templates['factual'][lang]
-        template = random.choice(templates)
         
-        # 生成问题
-        question_text = template.format(entity=entity)
+        # 基于边生成问题
+        edges = list(subgraph.edges(data=True))
+        for u, v, edge_data in edges[:5]:  # 限制数量
+            # 获取源节点和目标节点数据
+            source_node = {'id': u, **subgraph.nodes[u]}
+            target_node = {'id': v, **subgraph.nodes[v]}
+            edge = {
+                'source': u,
+                'target': v,
+                'relation': edge_data.get('relation', '')
+            }
+            
+            # 智能选择模板（基于实体和关系类型）
+            template = self._select_best_template(templates, source_node, target_node, edge, lang)
+            
+            # 填充模板
+            question = template.format(
+                entity=edge['source'],
+                entity1=edge['source'],
+                entity2=edge['target'],
+                relation=edge['relation'],
+                relation_type=self._get_relation_type_name(edge['relation'], lang),
+                entity_type=self._get_entity_type_name(target_node.get('type', 'unknown'), lang),
+                attribute=self._get_attribute_name(source_node.get('type', 'unknown'), lang)
+            )
+            
+            # 验证问题合理性
+            is_valid, validity_score, suggestion = self._validate_question(question, subgraph, 'factual')
+            
+            if not is_valid:
+                # 尝试优化问题
+                optimized_question = self._optimize_question(question, subgraph, suggestion)
+                if optimized_question:
+                    question = optimized_question
+                else:
+                    continue  # 跳过不合理的问题
+            
+            # 生成答案
+            answer = self._generate_answer_with_llm(question, subgraph, 'factual')
+            
+            qa_pairs.append({
+                'question': question,
+                'answer': answer,
+                'type': 'factual',
+                'language': lang,
+                'subgraph': subgraph,
+                'validity_score': validity_score,
+                'evidence': {
+                    'nodes': [source_node, target_node],
+                    'edges': [edge]
+                }
+            })
         
-        # 生成答案
-        answer = self._generate_answer(subgraph, entity, question_text, 'factual')
-        
-        if not answer:
-            return None
-        
-        return {
-            'type': 'factual',
-            'question': question_text,
-            'answer': answer,
-            'entities': [entity],
-            'language': lang,
-            'subgraph_id': subgraph.get('id', 0)
-        }
+        return qa_pairs
     
-    def _generate_reasoning_question(self, subgraph: Dict, features: Dict) -> Optional[Dict]:
-        """生成推理类问题"""
-        nodes = subgraph['nodes']
+    def _generate_comparison_questions(self, subgraph: nx.DiGraph, 
+                                     features: Dict, lang: str) -> List[Dict]:
+        """生成比较型问题"""
+        qa_pairs = []
+        templates = self.question_templates['comparison'][lang]
         
-        if not nodes:
-            return None
+        # 找到相同类型的实体进行比较
+        entity_groups = {}
+        for node_id in subgraph.nodes():
+            node_data = subgraph.nodes[node_id]
+            entity_type = node_data.get('type', 'unknown')
+            if entity_type not in entity_groups:
+                entity_groups[entity_type] = []
+            entity_groups[entity_type].append({'id': node_id, **node_data})
         
-        # 选择一个节点
-        node = random.choice(nodes)
-        entity = node['id']
+        # 为每组生成比较问题
+        for entity_type, entities in entity_groups.items():
+            if len(entities) >= 2:
+                # 随机选择两个实体
+                entity1, entity2 = random.sample(entities, 2)
+                
+                # 验证这两个实体是否适合比较
+                if not self._can_compare_entities(entity1, entity2, subgraph):
+                    continue
+                
+                template = random.choice(templates)
+                
+                # 选择比较维度
+                aspect = self._select_comparison_aspect(entity_type, lang)
+                
+                question = template.format(
+                    entity1=entity1['id'],
+                    entity2=entity2['id'],
+                    aspect=aspect,
+                    attribute=self._get_attribute_name(entity_type, lang),
+                    entity_list=', '.join([e['id'] for e in entities]),
+                    criterion=aspect,
+                    superlative=self._get_superlative(lang)
+                )
+                
+                # 验证问题合理性
+                is_valid, validity_score, suggestion = self._validate_question(question, subgraph, 'comparison')
+                
+                if not is_valid:
+                    optimized_question = self._optimize_question(question, subgraph, suggestion)
+                    if optimized_question:
+                        question = optimized_question
+                    else:
+                        continue
+                
+                # 使用LLM生成答案
+                answer = self._generate_answer_with_llm(question, subgraph, 'comparison')
+                
+                qa_pairs.append({
+                    'question': question,
+                    'answer': answer,
+                    'type': 'comparison',
+                    'language': lang,
+                    'subgraph': subgraph,
+                    'validity_score': validity_score,
+                    'evidence': {
+                        'nodes': entities,
+                        'comparison_aspect': aspect
+                    }
+                })
         
-        # 选择语言和模板
-        lang = random.choice(['zh', 'en'])
-        templates = self.question_templates['reasoning'][lang]
-        template = random.choice(templates)
-        
-        # 生成问题
-        question_text = template.format(entity=entity)
-        
-        # 生成答案
-        answer = self._generate_answer(subgraph, entity, question_text, 'reasoning')
-        
-        if not answer:
-            return None
-        
-        return {
-            'type': 'reasoning',
-            'question': question_text,
-            'answer': answer,
-            'entities': [entity],
-            'language': lang,
-            'subgraph_id': subgraph.get('id', 0)
-        }
+        return qa_pairs
     
-    def _generate_multihop_question(self, subgraph: Dict, features: Dict) -> Optional[Dict]:
+    def _generate_multihop_questions(self, subgraph: nx.DiGraph, 
+                                   features: Dict, lang: str) -> List[Dict]:
         """生成多跳问题"""
-        nodes = subgraph['nodes']
-        edges = subgraph['edges']
-        
-        if len(nodes) < 2 or not edges:
-            return None
-        
-        # 找两个有连接的节点
-        edge = random.choice(edges)
-        entity1 = edge['source']
-        entity2 = edge['target']
-        
-        # 选择语言和模板
-        lang = random.choice(['zh', 'en'])
+        qa_pairs = []
         templates = self.question_templates['multi_hop'][lang]
-        template = random.choice(templates)
         
-        # 生成问题
-        question_text = template.format(entity1=entity1, entity2=entity2)
+        # 使用已识别的路径模式
+        for pattern in features['path_patterns']:
+            if pattern['type'] == 'two_hop' and len(pattern['path']) >= 3:
+                start = pattern['path'][0]
+                middle = pattern['path'][1]
+                end = pattern['path'][2]
+                
+                # 获取节点信息
+                start_node = {'id': start, **subgraph.nodes[start]}
+                middle_node = {'id': middle, **subgraph.nodes[middle]}
+                end_node = {'id': end, **subgraph.nodes[end]}
+                
+                # 验证路径的语义合理性
+                if not self._validate_path_semantics(start_node, middle_node, end_node, pattern['relations']):
+                    continue
+                
+                template = random.choice(templates)
+                
+                relations = pattern['relations']
+                # 选最长字符串作为代表relation
+                relation = max(relations, key=len) if relations else ''
+                
+                question = template.format(
+                    entity1=start,
+                    entity2=end,
+                    entity_type=self._get_entity_type_name(middle_node.get('type', 'unknown'), lang),
+                    start=start,
+                    end=end,
+                    path_type=self._get_path_type_name(lang),
+                    entity=start,
+                    relation1=relations[0] if len(relations) > 0 else '',
+                    relation2=relations[1] if len(relations) > 1 else '',
+                    relation=relation
+                )
+                
+                # 验证问题合理性
+                is_valid, validity_score, suggestion = self._validate_question(question, subgraph, 'multi_hop')
+                
+                if not is_valid:
+                    optimized_question = self._optimize_question(question, subgraph, suggestion)
+                    if optimized_question:
+                        question = optimized_question
+                    else:
+                        continue
+                
+                # 生成答案
+                answer = self._generate_answer_with_llm(question, subgraph, 'multi_hop')
+                
+                qa_pairs.append({
+                    'question': question,
+                    'answer': answer,
+                    'type': 'multi_hop',
+                    'language': lang,
+                    'subgraph': subgraph,
+                    'validity_score': validity_score,
+                    'evidence': {
+                        'path': pattern['path'],
+                        'relations': pattern['relations']
+                    }
+                })
         
-        # 生成答案
-        answer = self._generate_answer(subgraph, [entity1, entity2], 
-                                     question_text, 'multi_hop')
-        
-        if not answer:
-            return None
-        
-        return {
-            'type': 'multi_hop',
-            'question': question_text,
-            'answer': answer,
-            'entities': [entity1, entity2],
-            'language': lang,
-            'subgraph_id': subgraph.get('id', 0)
-        }
+        return qa_pairs
     
-    def _generate_comparative_question(self, subgraph: Dict, features: Dict) -> Optional[Dict]:
-        """生成比较类问题"""
-        nodes = subgraph['nodes']
+    def _generate_reasoning_questions(self, subgraph: nx.DiGraph, 
+                                    features: Dict, lang: str) -> List[Dict]:
+        """生成推理型问题"""
+        qa_pairs = []
+        templates = self.question_templates['reasoning'][lang]
         
-        if len(nodes) < 2:
-            return None
+        # 选择关键实体
+        if features['key_entities']:
+            key_entity = random.choice(features['key_entities'])
+            
+            # 找到相关的边和节点作为证据
+            related_edges = []
+            for u, v, data in subgraph.edges(data=True):
+                if u == key_entity['id'] or v == key_entity['id']:
+                    related_edges.append({
+                        'source': u,
+                        'target': v,
+                        'relation': data.get('relation', '')
+                    })
+            
+            if related_edges:
+                # 验证是否有足够的信息进行推理
+                if not self._has_sufficient_reasoning_context(key_entity, related_edges, subgraph):
+                    return qa_pairs
+                
+                template = random.choice(templates)
+                
+                # 构造条件和推理目标
+                condition = self._create_condition(related_edges, lang)
+                target = self._select_reasoning_target(subgraph, key_entity, lang)
+                
+                question = template.format(
+                    entity=key_entity['id'],
+                    condition=condition,
+                    target=target,
+                    evidence=self._summarize_evidence(related_edges, lang),
+                    requirement=self._select_requirement(key_entity['type'], lang),
+                    attribute=self._get_attribute_name(key_entity['type'], lang),
+                    performance=self._get_performance_metric(key_entity['type'], lang)
+                )
+                
+                # 验证问题合理性
+                is_valid, validity_score, suggestion = self._validate_question(question, subgraph, 'reasoning')
+                
+                if not is_valid:
+                    optimized_question = self._optimize_question(question, subgraph, suggestion)
+                    if optimized_question:
+                        question = optimized_question
+                    else:
+                        return qa_pairs
+                
+                answer = self._generate_answer_with_llm(question, subgraph, 'reasoning')
+                
+                qa_pairs.append({
+                    'question': question,
+                    'answer': answer,
+                    'type': 'reasoning',
+                    'language': lang,
+                    'subgraph': subgraph,
+                    'validity_score': validity_score,
+                    'evidence': {
+                        'key_entity': key_entity,
+                        'related_edges': related_edges
+                    }
+                })
         
-        # 随机选择两个节点
-        entity1, entity2 = random.sample([n['id'] for n in nodes], 2)
-        
-        # 选择语言和模板
-        lang = random.choice(['zh', 'en'])
-        templates = self.question_templates['comparative'][lang]
-        template = random.choice(templates)
-        
-        # 生成问题
-        question_text = template.format(entity1=entity1, entity2=entity2)
-        
-        # 生成答案
-        answer = self._generate_answer(subgraph, [entity1, entity2], 
-                                     question_text, 'comparative')
-        
-        if not answer:
-            return None
-        
-        return {
-            'type': 'comparative',
-            'question': question_text,
-            'answer': answer,
-            'entities': [entity1, entity2],
-            'language': lang,
-            'subgraph_id': subgraph.get('id', 0)
-        }
+        return qa_pairs
     
-    def _generate_causal_question(self, subgraph: Dict, features: Dict) -> Optional[Dict]:
-        """生成因果类问题"""
-        nodes = subgraph['nodes']
-        edges = subgraph['edges']
+    def _validate_question(self, question: str, subgraph: nx.DiGraph, q_type: str) -> Tuple[bool, float, str]:
+        """
+        验证问题的合理性
+        返回：(是否合理, 合理性分数, 改进建议)
+        """
+        validation_prompt = f"""请评估以下问题的合理性：
+
+请评估以下问题的合理性：
+
+问题：{question}
+问题类型：{q_type}
+
+基于的知识图谱信息：
+{self._format_subgraph_for_prompt(subgraph)}
+
+请从以下几个方面进行评分（总分为1分）：
+
+1. 语义合理性（0-0.3分）：问题在现实应用中是否有意义，涉及的实体和关系是否合理关联，避免简单拼凑无关实体。
+2. 信息完整性（0-0.2分）：问题是否包含足够的上下文信息，使问题清晰明确。
+3. 答案可得性（0-0.3分）：基于给定的知识图谱信息，是否可以找到问题的合理答案。
+4. 语言流畅性（0-0.2分）：问题的表述是否自然、通顺，没有语法或表达上的障碍。
+
+请给出以下输出：
+
+1. 总分（0-1之间的小数）
+2. 是否合理（合理 / 不合理）
+3. 改进建议（若不合理，请具体说明如何改进）
+
+格式示例：
+总分：0.8
+是否合理：不合理
+改进建议：问题中的实体关系较为松散，缺乏实际联系。建议明确实体间的因果或逻辑关系，确保问题有实际意义且可根据知识图谱信息回答。
+
+---
+
+示例1（合理问题）：
+问题：在某新型电子纸显示屏出现不规则的色斑，且在不同温度下表现各异，初步判断可能是与ZnO TFT的柔性有关，但具体原因不明。请分析可能的原因并提出解决方案。该电子纸显示屏在不同温度下的色斑现象，疑似与ZnO TFT的柔性特性及全尺寸应用有关。请详细分析ZnO TFT的柔性是如何影响设备性能，并提出改进方案。
+原因：该问题语义合理，实体关系紧密，符合现实工程背景。
+
+示例2（不合理问题）：
+问题：在某型号TCL电视机中，用户反映屏幕出现时有时无的闪烁现象，并伴有音频输出不稳定。经初步检测，电源模块工作正常，但当温度升高时，GaAs半导体材料的AlₓGa₁₋ₓAs合金层的压力单位kbar值异常波动，导致电子迁移率降低，进而影响了图像信号处理电路的工作稳定性。请分析可能的原因并提出解决方案？解决方案需考虑温度对合金层压力的影响及如何优化材料稳定性。
+原因：实体间关联较弱，问题更像是拼凑多种专业名词，缺乏针对性和实际工程背景支持。
+"""
+
+        # 使用LLM进行验证
+        inputs = self.tokenizer(validation_prompt, return_tensors="pt", truncation=True, 
+                              max_length=self.max_length)
+        inputs = {k: v.to(self.device) for k, v in inputs.items()}
         
-        if not nodes or not edges:
-            return None
+        with torch.no_grad():
+            outputs = self.model.generate(
+                **inputs,
+                max_new_tokens=150,
+                temperature=0.3,  # 降低温度以获得更稳定的评估
+                do_sample=True,
+                top_p=0.9
+            )
         
-        # 优先选择有因果关系的边
-        causal_edges = [e for e in edges if e.get('relation', '') in 
-                       ['导致', '影响', '产生', '引起', 'causes', 'affects']]
+        response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
         
-        if causal_edges:
-            edge = random.choice(causal_edges)
-            entity1 = edge['source']
-            entity2 = edge['target']
-        else:
-            # 随机选择
-            if len(nodes) >= 2:
-                entity1, entity2 = random.sample([n['id'] for n in nodes], 2)
-            else:
-                entity1 = entity2 = nodes[0]['id']
+        # 解析响应
+        validity_score = 0.8  # 默认分数
+        is_valid = True
+        suggestion = ""
         
-        # 选择语言和模板
-        lang = random.choice(['zh', 'en'])
-        templates = self.question_templates['causal'][lang]
-        template = random.choice(templates)
+        try:
+            # 提取分数
+            if "总分：" in response:
+                score_str = response.split("总分：")[1].split("\n")[0].strip()
+                validity_score = float(score_str)
+            
+            # 提取是否合理
+            if "是否合理：" in response:
+                validity_str = response.split("是否合理：")[1].split("\n")[0].strip()
+                is_valid = "合理" in validity_str and "不合理" not in validity_str
+            
+            # 提取改进建议
+            if "改进建议：" in response:
+                suggestion = response.split("改进建议：")[1].strip()
+        except:
+            # 解析失败，使用默认值
+            pass
         
-        # 生成问题
-        if '{entity1}' in template and '{entity2}' in template:
-            question_text = template.format(entity1=entity1, entity2=entity2)
-            entities = [entity1, entity2]
-        else:
-            question_text = template.format(entity=entity1)
-            entities = [entity1]
+        # 基于分数阈值判断
+        if validity_score < self.validity_threshold:
+            is_valid = False
+            if not suggestion:
+                suggestion = "问题可能不够合理，建议重新构造或调整实体关系的组合"
         
-        # 生成答案
-        answer = self._generate_answer(subgraph, entities, question_text, 'causal')
-        
-        if not answer:
-            return None
-        
-        return {
-            'type': 'causal',
-            'question': question_text,
-            'answer': answer,
-            'entities': entities,
-            'language': lang,
-            'subgraph_id': subgraph.get('id', 0)
-        }
+        return is_valid, validity_score, suggestion
     
-    def _generate_answer(self, subgraph: Dict, entities: Union[str, List[str]], 
-                        question: str, q_type: str) -> Optional[str]:
+    def _optimize_question(self, question: str, subgraph: nx.DiGraph, suggestion: str) -> Optional[str]:
+        """
+        基于建议优化问题
+        """
+        optimization_prompt = f"""请根据以下信息优化问题：
+
+原始问题：{question}
+改进建议：{suggestion}
+
+基于的知识图谱信息：
+{self._format_subgraph_for_prompt(subgraph)}
+
+请生成一个更合理、更自然的问题。保持问题的核心意图不变，但要：
+1. 确保实体和关系的组合在语义上合理
+2. 使问题表述更加自然流畅
+3. 确保基于给定的知识图谱可以回答
+4. 避免生硬的模板痕迹
+5.问题和心不变
+6.符合专业术语和标准流程
+
+优化后的问题："""
+
+        # 使用LLM优化
+        inputs = self.tokenizer(optimization_prompt, return_tensors="pt", truncation=True, 
+                              max_length=self.max_length)
+        inputs = {k: v.to(self.device) for k, v in inputs.items()}
+        
+        with torch.no_grad():
+            outputs = self.model.generate(
+                **inputs,
+                max_new_tokens=100,
+                temperature=0.7,
+                do_sample=True,
+                top_p=0.9
+            )
+        
+        response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        
+        # 提取优化后的问题
+        if "优化后的问题：" in response:
+            optimized = response.split("优化后的问题：")[1].strip()
+            # 清理可能的多余内容
+            optimized = optimized.split("\n")[0].strip()
+            
+            # 再次验证优化后的问题
+            is_valid, score, _ = self._validate_question(optimized, subgraph, 'optimized')
+            if is_valid and score > self.validity_threshold:
+                return optimized
+        
+        return None
+    
+    def _select_best_template(self, templates: List[str], source_node: Dict, 
+                            target_node: Dict, edge: Dict, lang: str) -> str:
+        """基于实体和关系类型智能选择最合适的模板"""
+        # 简化实现：基于实体类型和关系类型的组合选择
+        # 实际可以使用更复杂的规则或学习的方法
+        
+        # 如果是技术类实体使用技术相关的关系，选择特定模板
+        if source_node.get('type', '') in ['技术', '工艺'] and edge['relation'] in ['使用', '应用于']:
+            # 优先选择包含relation_type的模板
+            for template in templates:
+                if 'relation_type' in template:
+                    return template
+        
+        # 如果是比较类的场景，选择包含entity1和entity2的模板
+        if 'entity1' in templates[0] and 'entity2' in templates[0]:
+            for template in templates:
+                if 'entity1' in template and 'entity2' in template:
+                    return template
+        
+        # 默认随机选择
+        return random.choice(templates)
+    
+    def _can_compare_entities(self, entity1: Dict, entity2: Dict, subgraph: nx.DiGraph) -> bool:
+        """判断两个实体是否适合进行比较"""
+        # 检查是否有共同的关系或属性
+        entity1_relations = set()
+        entity2_relations = set()
+        
+        for u, v, data in subgraph.edges(data=True):
+            if u == entity1['id']:
+                entity1_relations.add(data.get('relation', ''))
+            if u == entity2['id']:
+                entity2_relations.add(data.get('relation', ''))
+        
+        # 如果有共同的关系类型，则适合比较
+        common_relations = entity1_relations.intersection(entity2_relations)
+        return len(common_relations) > 0
+    
+    def _validate_path_semantics(self, start_node: Dict, middle_node: Dict, 
+                               end_node: Dict, relations: List[str]) -> bool:
+        """验证路径的语义合理性"""
+        # 简化实现：检查关系类型是否能形成合理的传递
+        # 例如：A使用B，B包含C => A通过B间接使用C（合理）
+        
+        # 定义一些合理的关系传递模式
+        valid_patterns = [
+            (['使用', '包含'], True),
+            (['生产', '使用'], True),
+            (['研发', '应用于'], True),
+            (['依赖', '依赖'], True),  # 传递依赖
+            (['改进', '替代'], False),  # 改进和替代不能传递
+        ]
+        
+        if len(relations) >= 2:
+            for pattern, is_valid in valid_patterns:
+                if relations[0] in pattern and relations[1] in pattern:
+                    return is_valid
+        
+        # 默认认为合理
+        return True
+    
+    def _has_sufficient_reasoning_context(self, entity: Dict, edges: List[Dict], 
+                                        subgraph: nx.DiGraph) -> bool:
+        """判断是否有足够的上下文进行推理"""
+        # 至少需要2条相关边才能进行有意义的推理
+        return len(edges) >= 2
+    
+    def _generate_answer_with_llm(self, question: str, subgraph: nx.DiGraph, 
+                                 q_type: str) -> str:
         """使用LLM生成答案"""
-        # 确保entities是列表
-        if isinstance(entities, str):
-            entities = [entities]
+        # 构造提示
+        prompt = self._create_answer_prompt(question, subgraph, q_type)
         
-        # 构建上下文
-        context = self._build_context(subgraph, entities)
+        # 生成答案
+        inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True, 
+                              max_length=self.max_length)
+        inputs = {k: v.to(self.device) for k, v in inputs.items()}
         
-        # 构建提示
+        with torch.no_grad():
+            outputs = self.model.generate(
+                **inputs,
+                max_new_tokens=200,
+                temperature=self.temperature,
+                do_sample=True,
+                top_p=0.9
+            )
+        
+        answer = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        
+        # 提取答案部分
+        answer = self._extract_answer_from_output(answer, prompt)
+        
+        return answer
+    
+    def _create_answer_prompt(self, question: str, subgraph: nx.DiGraph, 
+                            q_type: str) -> str:
+        """创建答案生成提示"""
+        # 将子图信息格式化
+        subgraph_desc = self._format_subgraph_for_prompt(subgraph)
+        
         prompt = f"""基于以下知识图谱信息，回答问题。
 
 知识图谱信息：
-{context}
+{subgraph_desc}
 
-问题：{question}
+问题类型：
+{q_type}
 
-请提供准确、简洁的答案。答案应该基于提供的信息，并且符合专业表达。
+问题：
+{question}
 
-答案："""
+请完成以下任务：
 
-        try:
-            # 使用简单的规则生成答案，避免模型调用失败
-            if self.debug_mode:
-                # 在调试模式下，使用简单的模板答案
-                return self._generate_template_answer(subgraph, entities, q_type, question)
-            
-            # 正常模式下使用LLM
-            inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True,
-                                  max_length=1024).to(self.device)
-            
-            with torch.no_grad():
-                outputs = self.model.generate(
-                    **inputs,
-                    max_new_tokens=200,
-                    temperature=0.7,
-                    top_p=0.9,
-                    do_sample=True,
-                    pad_token_id=self.tokenizer.pad_token_id
-                )
-            
-            answer = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-            
-            # 提取答案部分
-            if "答案：" in answer:
-                answer = answer.split("答案：")[-1].strip()
-            else:
-                # 移除prompt部分
-                answer = answer[len(prompt):].strip()
-            
-            # 验证答案长度
-            if len(answer) < 10:
-                return self._generate_template_answer(subgraph, entities, q_type, question)
-            
-            return answer
-            
-        except Exception as e:
-            logger.error(f"生成答案失败: {str(e)}")
-            # 使用模板答案作为降级方案
-            return self._generate_template_answer(subgraph, entities, q_type, question)
+1. 判断问题合理性：
+   - 该问题是否合理且能基于给定知识图谱回答？
+   - 如果不合理或无法回答，请说明原因，并尝试推测问题的真实意图。
+
+2. 回答问题：
+   - 如果合理，基于知识图谱信息和你的专业知识，给出准确且详细的答案。
+   - 如需推理，请简要说明推理过程。
+
+3. 答案要求：
+   - 重点突出，避免冗余信息。
+   - 结构清晰，条理分明。
+   - 使用专业术语和标准表达。
+
+示例参考：
+
+【正确示例】
+问题：在使用SMT工艺的EPD设备中，用户反映屏幕刷新率异常低下，尽管Epson技术已经优化了substrate resin的测试条件。请分析可能的原因并提供解决策略。
+答案：在进行故障分析时，首先需要确认TFT性能是否正常，包括开关特性和响应时间。其次，检查substrate resin是否完全固化且厚度均匀。然后，核实SMT工艺参数，如焊膏粘度和印刷压力。最后，验证屏幕刷新率的计算方法是否准确。具体步骤：1) 测试TFT性能；2) 检查substrate resin固化情况；3) 核实SMT工艺参数；4) 验证刷新率计算方法。根据检查结果调整相关参数，最终提升屏幕刷新率，改善用户体验。
+
+【错误示例】
+问题：某款采用a-Si TFT和EPD的电子纸显示器出现不稳定的屏幕刷新率，且部分区域显示异常，可能与solvent-free材料和ZnO TFT的应用有关，请分析潜在原因并提出解决方案。
+答案：该问题可能源于solvent-free材料和ZnO TFT的兼容性问题。具体步骤包括检查材料兼容性、测试ZnO TFT电性能、分析信号传输稳定性及驱动电路异常。解决方案涵盖材料兼容性优化、工艺改进及电路调整。虽然内容相关，但表述较笼统，缺乏具体推理与细节说明，回答不够精确。
+
+分析：
+【正确示例】  
+问题表述具体，答案结构清晰，包含详细推理过程和具体操作步骤，逻辑严谨，专业术语使用恰当，便于理解和执行。
+【错误示例】  
+答案过于笼统，缺少详细推理和因果分析，表述简单，缺乏系统性和专业诊断步骤，导致答案不够精准和权威。
+
+
+仔细阅读分析后请开始回答：
+
+答案：
+
+
+"""
+
+        return prompt
     
-    def _generate_template_answer(self, subgraph: Dict, entities: List[str], 
-                                 q_type: str, question: str) -> str:
-        """生成模板答案作为降级方案"""
-        # 获取实体相关信息
-        entity_info = []
-        for entity in entities:
-            # 查找节点信息
-            for node in subgraph['nodes']:
-                if node['id'] == entity:
-                    entity_info.append(f"{entity}（{node.get('type', '组件')}）")
-                    break
-            else:
-                entity_info.append(entity)
+    def _format_subgraph_for_prompt(self, subgraph: nx.DiGraph) -> str:
+        """格式化子图信息用于提示"""
+        lines = []
         
-        # 根据问题类型生成答案
-        if q_type == 'factual':
-            if '是什么' in question or 'What is' in question:
-                return f"{entity_info[0]}是系统中的重要组成部分，负责特定的功能处理。它具有高性能、高可靠性的特点，在工业应用中发挥着关键作用。"
-            elif '特征' in question or 'features' in question:
-                return f"{entity_info[0]}的主要特征包括：1）高效的处理能力；2）稳定的性能表现；3）良好的兼容性；4）易于维护和升级。这些特征使其成为系统中不可或缺的部分。"
-            elif '参数' in question or 'parameters' in question:
-                return f"{entity_info[0]}的技术参数包括：工作电压范围、处理速度、功耗指标、接口类型等。具体参数需要根据实际应用场景和产品型号确定。"
-            else:
-                return f"{entity_info[0]}在系统中承担重要职责，通过与其他组件的协同工作，确保整体系统的正常运行。"
+        # 节点信息
+        lines.append("节点：")
+        for node_id in subgraph.nodes():
+            node_data = subgraph.nodes[node_id]
+            node_type = node_data.get('type', 'unknown')
+            lines.append(f"  - {node_id} (类型: {node_type})")
         
-        elif q_type == 'reasoning':
-            if '影响' in question or 'impact' in question:
-                return f"如果{entity_info[0]}发生故障，可能会导致：1）相关功能无法正常工作；2）系统性能下降；3）数据处理中断。因此需要定期检查和维护，确保其正常运行。"
-            elif '原理' in question or 'principle' in question:
-                return f"{entity_info[0]}的工作原理基于先进的技术架构，通过精确的控制逻辑和高效的数据处理算法，实现预定的功能目标。其核心在于优化的设计和可靠的实现。"
-            elif '优化' in question or 'optimize' in question:
-                return f"优化{entity_info[0]}的性能可以从以下方面入手：1）调整工作参数；2）升级硬件配置；3）优化软件算法；4）改善工作环境。通过综合优化可以显著提升整体性能。"
-            else:
-                return f"{entity_info[0]}在系统中起着协调和控制的作用，通过与其他模块的交互，确保数据和信号的正确传递，维持系统的稳定运行。"
+        # 边信息
+        lines.append("\n关系：")
+        for u, v, data in subgraph.edges(data=True):
+            relation = data.get('relation', 'unknown')
+            lines.append(f"  - {u} --[{relation}]--> {v}")
         
-        elif q_type == 'multi_hop':
-            if len(entities) >= 2:
-                return f"{entity_info[0]}和{entity_info[1]}之间存在密切的联系。{entity_info[0]}的输出可以作为{entity_info[1]}的输入，形成完整的处理链路。这种连接关系确保了数据在系统中的有序流转。"
-            else:
-                return f"{entity_info[0]}通过多个中间环节与系统其他部分相连，形成复杂的交互网络。这种多跳连接增强了系统的灵活性和可扩展性。"
+        # 特殊信息
+        if 'topology' in subgraph.graph:
+            lines.append(f"\n拓扑类型：{subgraph.graph['topology']}")
         
-        elif q_type == 'comparative':
-            if len(entities) >= 2:
-                return f"{entity_info[0]}和{entity_info[1]}各有特点：{entity_info[0]}在处理速度上有优势，适合实时应用；而{entity_info[1]}在稳定性方面表现更好，适合长期运行。选择时需要根据具体需求权衡。"
-            else:
-                return f"{entity_info[0]}相比同类产品，在性能、成本、可靠性等方面都有其独特优势，是经过市场验证的成熟方案。"
-        
-        elif q_type == 'causal':
-            if len(entities) >= 2:
-                return f"{entity_info[0]}的变化会直接影响{entity_info[1]}的工作状态。这种因果关系是由于两者之间的功能依赖性决定的。在系统设计时需要充分考虑这种相互影响。"
-            else:
-                return f"{entity_info[0]}的状态变化会在系统中产生连锁反应，影响相关组件的运行。因此需要建立完善的监控机制，及时发现和处理异常情况。"
-        
-        # 默认答案
-        return f"根据知识图谱信息，{entity_info[0]}是系统的重要组成部分，在整体架构中发挥着关键作用。"
+        return '\n'.join(lines)
     
-    def _build_context(self, subgraph: Dict, entities: List[str]) -> str:
-        """构建上下文信息"""
-        context_parts = []
+    def _extract_answer_from_output(self, output: str, prompt: str) -> str:
+        """从模型输出中提取答案"""
+        # 移除提示部分
+        if prompt in output:
+            output = output.replace(prompt, '').strip()
         
-        # 添加实体信息
-        context_parts.append("实体信息：")
-        entity_set = set(entities)
-        for node in subgraph['nodes']:
-            if node['id'] in entity_set:
-                context_parts.append(f"- {node['id']} (类型: {node.get('type', 'unknown')})")
+        # 提取答案部分
+        if '答案：' in output:
+            answer = output.split('答案：')[-1].strip()
+        else:
+            answer = output.strip()
         
-        # 添加关系信息
-        context_parts.append("\n关系信息：")
-        for edge in subgraph['edges']:
-            if edge['source'] in entity_set or edge['target'] in entity_set:
-                relation = edge.get('relation', edge.get('type', '相关'))
-                context_parts.append(f"- {edge['source']} --[{relation}]--> {edge['target']}")
+        # 清理答案
+        answer = answer.replace('\n\n', '\n')
         
-        # 添加其他相关节点
-        other_nodes = []
-        for edge in subgraph['edges']:
-            if edge['source'] in entity_set:
-                other_nodes.append(edge['target'])
-            if edge['target'] in entity_set:
-                other_nodes.append(edge['source'])
+        # 限制长度
+        max_answer_length = 500
+        if len(answer) > max_answer_length:
+            answer = answer[:max_answer_length] + "..."
         
-        if other_nodes:
-            context_parts.append("\n相关实体：")
-            for node_id in set(other_nodes):
-                for node in subgraph['nodes']:
-                    if node['id'] == node_id:
-                        context_parts.append(f"- {node['id']} (类型: {node.get('type', 'unknown')})")
-                        break
-        
-        return "\n".join(context_parts)
+        return answer
     
-    def _filter_questions(self, questions: List[Dict]) -> List[Dict]:
-        """过滤低质量问题"""
+    def _filter_qa_pairs(self, qa_pairs: List[Dict]) -> List[Dict]:
+        """过滤和质量检查QA对"""
         filtered = []
+        
+        quality_config = self.config['dataset_synthesis']['quality_checks']
+        min_q_len = quality_config['min_question_length']
+        max_q_len = quality_config['max_question_length']
+        
+        # 用于去重的集合
         seen_questions = set()
         
-        for q in questions:
-            # 检查必要字段
-            if not all(key in q for key in ['question', 'answer', 'type']):
+        for qa in qa_pairs:
+            # 长度检查
+            q_len = len(qa['question'])
+            if not (min_q_len <= q_len <= max_q_len):
                 continue
             
-            # 检查问题长度
-            q_len = len(q['question'])
-            if q_len < 5 or q_len > 500:
-                if self.debug_mode:
-                    logger.debug(f"问题长度不符合要求: {q_len}")
+            # 答案验证
+            if quality_config['answer_validation']:
+                if not qa['answer'] or len(qa['answer']) < 10:
+                    continue
+            
+            # 合理性分数检查
+            if 'validity_score' in qa and qa['validity_score'] < self.validity_threshold:
                 continue
             
-            # 检查答案长度
-            a_len = len(q['answer'])
-            if a_len < 20 or a_len > 2000:
-                if self.debug_mode:
-                    logger.debug(f"答案长度不符合要求: {a_len}")
-                continue
-            
-            # 去重
-            q_lower = q['question'].lower().strip()
-            if q_lower in seen_questions:
-                if self.debug_mode:
-                    logger.debug(f"问题重复: {q['question'][:50]}...")
-                continue
-            seen_questions.add(q_lower)
-            
-            # 检查问题和答案的相关性
-            if not any(entity in q['answer'] for entity in q.get('entities', [])):
-                if self.debug_mode:
-                    logger.debug(f"答案与实体无关: {q['question'][:50]}...")
-                # 不要过滤掉，可能是泛化的答案
-            
-            filtered.append(q)
+            # 去重（考虑相似度）
+            question_lower = qa['question'].lower().strip()
+            if question_lower not in seen_questions:
+                seen_questions.add(question_lower)
+                filtered.append(qa)
+        
+        # 确保类型分布均衡
+        filtered = self._balance_question_types(filtered)
+        
+        logger.info(f"质量过滤: {len(qa_pairs)} -> {len(filtered)}")
         
         return filtered
     
-    def save_questions(self, questions: List[Dict], output_path: str):
-        """保存生成的问题"""
-        with open(output_path, 'w', encoding='utf-8') as f:
-            json.dump(questions, f, ensure_ascii=False, indent=2)
+    def _balance_question_types(self, qa_pairs: List[Dict]) -> List[Dict]:
+        """平衡不同类型问题的分布"""
+        # 按类型分组
+        type_groups = {}
+        for qa in qa_pairs:
+            q_type = qa['type']
+            if q_type not in type_groups:
+                type_groups[q_type] = []
+            type_groups[q_type].append(qa)
         
-        logger.info(f"已保存{len(questions)}个问题到: {output_path}")
+        # 计算每种类型的目标数量
+        total_target = len(qa_pairs)
+        num_types = len(type_groups)
+        if num_types == 0:
+            return qa_pairs
+        
+        target_per_type = total_target // num_types
+        
+        # 平衡选择
+        balanced = []
+        for q_type, type_qa_pairs in type_groups.items():
+            # 按合理性分数排序，选择最好的
+            type_qa_pairs.sort(key=lambda x: x.get('validity_score', 0.8), reverse=True)
+            selected = type_qa_pairs[:target_per_type]
+            balanced.extend(selected)
+        
+        return balanced
+    
+    # 辅助方法保持不变
+    def _get_relation_type_name(self, relation: str, lang: str) -> str:
+        """获取关系类型的自然语言名称"""
+        relation_names = {
+            'zh_cn': {
+                '使用': '技术',
+                '包含': '组件',
+                '生产': '产品',
+                '研发': '技术',
+                '依赖': '依赖项',
+                '改进': '改进方案',
+                '替代': '替代品',
+                '认证': '认证',
+                '合作': '合作伙伴',
+                '应用于': '应用'
+            },
+            'en': {
+                '使用': 'technology',
+                '包含': 'component',
+                '生产': 'product',
+                '研发': 'technology',
+                '依赖': 'dependency',
+                '改进': 'improvement',
+                '替代': 'alternative',
+                '认证': 'certification',
+                '合作': 'partner',
+                '应用于': 'application'
+            }
+        }
+        
+        return relation_names.get(lang, {}).get(relation, relation)
+    
+    def _get_entity_type_name(self, entity_type: str, lang: str) -> str:
+        """获取实体类型的自然语言名称"""
+        type_names = {
+            'zh_cn': {
+                '产品': '产品',
+                '技术': '技术',
+                '工艺': '工艺',
+                '材料': '材料',
+                '设备': '设备',
+                '标准': '标准',
+                '专利': '专利',
+                '公司': '公司',
+                '人员': '人员',
+                '项目': '项目'
+            },
+            'en': {
+                '产品': 'product',
+                '技术': 'technology',
+                '工艺': 'process',
+                '材料': 'material',
+                '设备': 'equipment',
+                '标准': 'standard',
+                '专利': 'patent',
+                '公司': 'company',
+                '人员': 'personnel',
+                '项目': 'project'
+            }
+        }
+        
+        return type_names.get(lang, {}).get(entity_type, entity_type)
+    
+    def _get_attribute_name(self, entity_type: str, lang: str) -> str:
+        """获取实体属性名称"""
+        attributes = {
+            'zh_cn': {
+                '产品': '性能参数',
+                '技术': '技术指标',
+                '工艺': '工艺参数',
+                '材料': '材料特性',
+                '设备': '设备规格',
+                '公司': '核心竞争力'
+            },
+            'en': {
+                '产品': 'performance parameters',
+                '技术': 'technical specifications',
+                '工艺': 'process parameters',
+                '材料': 'material properties',
+                '设备': 'equipment specifications',
+                '公司': 'core competencies'
+            }
+        }
+        
+        return attributes.get(lang, {}).get(entity_type, '特性' if lang == 'zh_cn' else 'characteristics')
+    
+    def _select_comparison_aspect(self, entity_type: str, lang: str) -> str:
+        """选择比较维度"""
+        aspects = {
+            'zh_cn': {
+                '产品': ['性能', '成本', '可靠性', '能效'],
+                '技术': ['先进性', '成熟度', '应用范围', '技术壁垒'],
+                '材料': ['强度', '耐久性', '成本', '环保性'],
+                '工艺': ['效率', '精度', '成本', '稳定性']
+            },
+            'en': {
+                '产品': ['performance', 'cost', 'reliability', 'energy efficiency'],
+                '技术': ['advancement', 'maturity', 'application scope', 'technical barriers'],
+                '材料': ['strength', 'durability', 'cost', 'environmental friendliness'],
+                '工艺': ['efficiency', 'precision', 'cost', 'stability']
+            }
+        }
+        
+        type_aspects = aspects.get(lang, {}).get(entity_type, 
+                                                ['特性'] if lang == 'zh_cn' else ['characteristics'])
+        return random.choice(type_aspects)
+    
+    def _get_superlative(self, lang: str) -> str:
+        """获取最高级词汇"""
+        superlatives = {
+            'zh_cn': ['好', '优秀', '先进', '高效', '稳定'],
+            'en': ['best', 'excellent', 'advanced', 'efficient', 'stable']
+        }
+        
+        return random.choice(superlatives.get(lang, ['best']))
+    
+    def _create_condition(self, edges: List[Dict], lang: str) -> str:
+        """创建条件描述"""
+        if not edges:
+            return "在当前条件下" if lang == 'zh_cn' else "under current conditions"
+        
+        edge = edges[0]
+        if lang == 'zh_cn':
+            return f"{edge['source']}{edge['relation']}{edge['target']}"
+        else:
+            return f"{edge['source']} {edge['relation']} {edge['target']}"
+    
+    def _select_reasoning_target(self, subgraph: nx.DiGraph, entity: Dict, lang: str) -> str:
+        """选择推理目标"""
+        # 找到与实体相关的其他节点
+        related_nodes = []
+        for u, v in subgraph.edges():
+            if u == entity['id']:
+                related_nodes.append(v)
+            elif v == entity['id']:
+                related_nodes.append(u)
+        
+        if related_nodes:
+            return random.choice(related_nodes)
+        else:
+            return "系统性能" if lang == 'zh_cn' else "system performance"
+    
+    def _summarize_evidence(self, edges: List[Dict], lang: str) -> str:
+        """总结证据"""
+        if not edges:
+            return ""
+        
+        if lang == 'zh_cn':
+            evidence_parts = []
+            for edge in edges[:3]:  # 最多3条
+                evidence_parts.append(f"{edge['source']}{edge['relation']}{edge['target']}")
+            return "、".join(evidence_parts)
+        else:
+            evidence_parts = []
+            for edge in edges[:3]:
+                evidence_parts.append(f"{edge['source']} {edge['relation']} {edge['target']}")
+            return ", ".join(evidence_parts)
+    
+    def _select_requirement(self, entity_type: str, lang: str) -> str:
+        """选择需求"""
+        requirements = {
+            'zh_cn': {
+                '产品': '高质量标准',
+                '技术': '技术创新',
+                '材料': '特殊性能',
+                '工艺': '精确控制'
+            },
+            'en': {
+                '产品': 'high quality standards',
+                '技术': 'technological innovation',
+                '材料': 'special properties',
+                '工艺': 'precise control'
+            }
+        }
+        
+        return requirements.get(lang, {}).get(entity_type, 
+                                            '特定要求' if lang == 'zh_cn' else 'specific requirements')
+    
+    def _get_performance_metric(self, entity_type: str, lang: str) -> str:
+        """获取性能指标"""
+        metrics = {
+            'zh_cn': {
+                '产品': '整体性能',
+                '技术': '技术效果',
+                '材料': '使用性能',
+                '工艺': '生产效率'
+            },
+            'en': {
+                '产品': 'overall performance',
+                '技术': 'technical effectiveness',
+                '材料': 'usage performance',
+                '工艺': 'production efficiency'
+            }
+        }
+        
+        return metrics.get(lang, {}).get(entity_type, 
+                                       '性能' if lang == 'zh_cn' else 'performance')
+    
+    def _get_path_type_name(self, lang: str) -> str:
+        """获取路径类型名称"""
+        path_types = {
+            'zh_cn': ['技术演进', '供应链', '研发', '生产'],
+            'en': ['technology evolution', 'supply chain', 'R&D', 'production']
+        }
+        
+        return random.choice(path_types.get(lang, ['connection']))
