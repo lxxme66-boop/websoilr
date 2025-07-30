@@ -180,7 +180,9 @@ class QuestionGenerator:
         # 获取关系类型
         relation_types = set()
         for u, v, data in subgraph.edges(data=True):
-            if 'relation' in data:
+            if 'type' in data:
+                relation_types.add(data['type'])
+            elif 'relation' in data:
                 relation_types.add(data['relation'])
         
         features = {
@@ -258,7 +260,7 @@ class QuestionGenerator:
                         patterns.append({
                             'type': 'two_hop',
                             'path': [u1, v1, v2],
-                            'relations': [data1.get('relation', ''), data2.get('relation', '')]
+                            'relations': [data1.get('type', data1.get('relation', '')), data2.get('type', data2.get('relation', ''))]
                         })
         
         return patterns
@@ -351,7 +353,7 @@ class QuestionGenerator:
             edge = {
                 'source': u,
                 'target': v,
-                'relation': edge_data.get('relation', '')
+                'relation': edge_data.get('type', edge_data.get('relation', ''))
             }
             
             # 智能选择模板（基于实体和关系类型）
@@ -551,7 +553,7 @@ class QuestionGenerator:
                     related_edges.append({
                         'source': u,
                         'target': v,
-                        'relation': data.get('relation', '')
+                        'relation': data.get('type', data.get('relation', ''))
                     })
             
             if related_edges:
@@ -774,9 +776,9 @@ class QuestionGenerator:
         
         for u, v, data in subgraph.edges(data=True):
             if u == entity1['id']:
-                entity1_relations.add(data.get('relation', ''))
+                entity1_relations.add(data.get('type', data.get('relation', '')))
             if u == entity2['id']:
-                entity2_relations.add(data.get('relation', ''))
+                entity2_relations.add(data.get('type', data.get('relation', '')))
         
         # 如果有共同的关系类型，则适合比较
         common_relations = entity1_relations.intersection(entity2_relations)
@@ -910,7 +912,7 @@ class QuestionGenerator:
         # 边信息
         lines.append("\n关系：")
         for u, v, data in subgraph.edges(data=True):
-            relation = data.get('relation', 'unknown')
+            relation = data.get('type', data.get('relation', 'unknown'))
             lines.append(f"  - {u} --[{relation}]--> {v}")
         
         # 特殊信息
