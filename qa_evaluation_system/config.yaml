@@ -1,0 +1,169 @@
+# QA Evaluation System Configuration
+
+# LLM Configuration
+llm:
+  # Primary model for evaluation
+  primary_model: "gpt-4"
+  
+  # Fallback models (used if primary fails)
+  fallback_models:
+    - "gpt-3.5-turbo"
+    - "claude-3-opus"
+    - "deepseek-chat"
+  
+  # Model parameters
+  temperature: 0.1
+  max_tokens: 1500
+  top_p: 0.95
+  
+  # API configuration
+  api_config:
+    openai:
+      api_key: "${OPENAI_API_KEY}"
+      base_url: "https://api.openai.com/v1"
+    anthropic:
+      api_key: "${ANTHROPIC_API_KEY}"
+    deepseek:
+      api_key: "${DEEPSEEK_API_KEY}"
+      base_url: "https://api.deepseek.com/v1"
+  
+  # Retry configuration
+  max_retries: 3
+  retry_delay: 1.0
+  
+  # Cache settings
+  enable_cache: true
+  cache_dir: ".cache/llm_responses"
+
+# Evaluation Weights
+weights:
+  # Question quality dimensions
+  question:
+    clarity: 0.25          # 问题清晰度
+    specificity: 0.20      # 问题具体性
+    logic: 0.20            # 逻辑合理性
+    value: 0.20            # 信息价值
+    grammar: 0.15          # 语法规范性
+  
+  # Answer quality dimensions
+  answer:
+    accuracy: 0.30         # 准确性
+    completeness: 0.25     # 完整性
+    relevance: 0.25        # 相关性
+    clarity: 0.20          # 表达清晰度
+  
+  # Overall weights
+  overall:
+    question_quality: 0.35
+    answer_quality: 0.40
+    qa_relevance: 0.25
+
+# NLP Models Configuration
+nlp_models:
+  # Sentence embedding model
+  sentence_transformer: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+  
+  # BERT model for scoring
+  bert_model: "bert-base-chinese"
+  
+  # Use GPU if available
+  device: "cuda"  # or "cpu"
+  
+  # Batch size for processing
+  batch_size: 32
+
+# Evaluation Thresholds
+thresholds:
+  # Quality levels
+  excellent: 0.90
+  good: 0.75
+  medium: 0.60
+  poor: 0.40
+  
+  # Specific checks
+  min_question_length: 10      # 最小问题长度（字符）
+  max_question_length: 200     # 最大问题长度（字符）
+  min_answer_length: 20        # 最小答案长度（字符）
+  max_answer_length: 2000      # 最大答案长度（字符）
+  
+  # Similarity thresholds
+  min_qa_similarity: 0.3       # 问答最小相似度
+  duplicate_threshold: 0.95    # 重复内容阈值
+
+# Rule Checking Configuration
+rules:
+  # Format checks
+  check_special_chars: true
+  check_urls: true
+  check_emails: true
+  check_code_blocks: true
+  
+  # Content checks
+  check_profanity: true
+  check_sensitive_info: true
+  check_repetition: true
+  
+  # Language checks
+  primary_language: "zh"       # 主要语言
+  allow_mixed_language: true   # 是否允许中英混合
+
+# Processing Configuration
+processing:
+  # Parallel processing
+  num_workers: 4
+  chunk_size: 100
+  
+  # Progress display
+  show_progress: true
+  
+  # Error handling
+  skip_on_error: true
+  log_errors: true
+  error_log_file: "logs/errors.log"
+
+# Output Configuration
+output:
+  # Report format
+  format: "json"  # json, csv, excel
+  
+  # Include details
+  include_detailed_scores: true
+  include_suggestions: true
+  include_raw_scores: false
+  
+  # Export settings
+  export_top_percentage: 0.3   # 导出前30%的高质量问答对
+  min_export_score: 0.7        # 最低导出分数
+  
+  # File paths
+  report_dir: "results"
+  export_dir: "exports"
+
+# Advanced Settings
+advanced:
+  # Enable ensemble evaluation
+  use_ensemble: true
+  ensemble_method: "weighted_average"  # weighted_average, voting, stacking
+  
+  # Calibration
+  calibrate_scores: true
+  calibration_samples: 1000
+  
+  # Feature extraction
+  extract_linguistic_features: true
+  extract_semantic_features: true
+  
+  # Custom prompts directory
+  custom_prompts_dir: "prompts"
+
+# Logging Configuration
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/qa_evaluation.log"
+  
+  # Separate logs for different components
+  component_logs:
+    llm: "logs/llm.log"
+    nlp: "logs/nlp.log"
+    rules: "logs/rules.log"
