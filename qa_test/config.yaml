@@ -1,0 +1,134 @@
+# 问答对质量评测系统配置文件
+
+# 大语言模型配置
+llm:
+  # 提供商: openai, anthropic, local
+  provider: openai
+  
+  # API密钥（也可以通过环境变量设置）
+  # api_key: your-api-key-here
+  
+  # 模型名称
+  model: gpt-4
+  
+  # 生成参数
+  temperature: 0.3
+  max_tokens: 500
+  
+  # 是否启用缓存
+  cache_enabled: true
+  
+  # 本地模型配置（当provider为local时使用）
+  # endpoint_url: http://localhost:8000/v1/chat/completions
+  # timeout: 30
+
+# 语义分析配置
+semantic:
+  # 预训练模型名称
+  model_name: paraphrase-multilingual-MiniLM-L12-v2
+  
+  # 设备: cuda, cpu
+  device: cpu
+  
+  # 是否启用缓存
+  cache_enabled: true
+
+# NLP指标配置
+nlp:
+  # 语言: chinese, english
+  language: chinese
+  
+  # ROUGE评分类型
+  rouge_types:
+    - rouge1
+    - rouge2
+    - rougeL
+
+# 数据预处理配置
+preprocessing:
+  # 是否去除HTML标签
+  remove_html: true
+  
+  # 是否去除URLs
+  remove_urls: true
+  
+  # 是否规范化空白字符
+  normalize_whitespace: true
+  
+  # 是否去除特殊字符
+  remove_special_chars: false
+  
+  # 文本长度限制
+  min_length: 5
+  max_length: 5000
+
+# 评分权重配置
+weights:
+  # LLM评测权重
+  llm_score: 0.4
+  
+  # 语义相似度权重
+  semantic_similarity: 0.2
+  
+  # 答案质量权重
+  answer_quality: 0.2
+  
+  # 语言流畅度权重
+  fluency: 0.1
+  
+  # 关键词覆盖权重
+  keyword_coverage: 0.1
+
+# 筛选阈值配置
+thresholds:
+  # 最低总分要求
+  min_total_score: 0.7
+  
+  # 各维度最低分数要求
+  min_llm_score: 0.6
+  min_semantic_similarity: 0.5
+  min_answer_quality: 0.5
+  
+  # 答案长度要求
+  min_answer_length: 20
+  max_answer_length: 1000
+
+# 评测系统配置
+evaluation:
+  # 批处理大小
+  batch_size: 10
+  
+  # 并行工作线程数
+  max_workers: 4
+  
+  # 是否启用结果缓存
+  cache_enabled: true
+
+# 输出配置
+output:
+  # 输出格式: json, jsonl
+  format: json
+  
+  # 是否生成详细报告
+  generate_report: true
+  
+  # 报告包含的内容
+  report_sections:
+    - statistics
+    - score_distribution
+    - quality_insights
+    - outliers
+  
+  # 是否保存评测详情
+  save_details: true
+
+# 日志配置
+logging:
+  # 日志级别: DEBUG, INFO, WARNING, ERROR
+  level: INFO
+  
+  # 日志文件
+  file: qa_evaluation.log
+  
+  # 是否在控制台输出
+  console: true
