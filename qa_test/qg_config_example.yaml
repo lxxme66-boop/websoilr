@@ -1,0 +1,94 @@
+# 问题生成配置示例
+# 用于 generate_and_evaluate.py 的 --qg-config 参数
+
+# LLM配置
+llm:
+  provider: "deepseek"
+  model: "deepseek-chat"
+  api_key: ${DEEPSEEK_API_KEY}  # 从环境变量读取
+  base_url: "https://api.deepseek.com"
+  temperature: 0.8
+  max_tokens: 2000
+
+# 问题生成配置
+question_generation:
+  # 每个子图生成的问题数量
+  questions_per_subgraph: 3
+  
+  # 问题类型配置
+  question_types:
+    factual:
+      enabled: true
+      weight: 0.4
+      templates:
+        - "关于{entity}的{attribute}是什么？"
+        - "{entity1}和{entity2}之间有什么{relation}关系？"
+        - "请解释{entity}在{context}中的作用。"
+    
+    comparison:
+      enabled: true
+      weight: 0.2
+      min_entities: 2  # 比较型问题需要至少2个实体
+      templates:
+        - "{entity1}和{entity2}在{aspect}方面有什么区别？"
+        - "比较{entity1}与{entity2}的优缺点。"
+    
+    reasoning:
+      enabled: true
+      weight: 0.2
+      min_depth: 2  # 推理问题需要至少2层深度
+      templates:
+        - "如果{condition}，对{entity}会产生什么影响？"
+        - "为什么{entity}需要{requirement}？"
+    
+    multi_hop:
+      enabled: true
+      weight: 0.2
+      min_hops: 2
+      max_hops: 4
+      templates:
+        - "从{start_entity}到{end_entity}的技术路径是什么？"
+        - "{entity1}如何通过{intermediate}影响{entity2}？"
+  
+  # 难度分布
+  difficulty_distribution:
+    easy: 0.3      # 简单问题占30%
+    medium: 0.5    # 中等问题占50%
+    hard: 0.2      # 困难问题占20%
+  
+  # 难度评估标准
+  difficulty_criteria:
+    easy:
+      max_entities: 2
+      max_relations: 1
+      max_depth: 1
+    medium:
+      max_entities: 4
+      max_relations: 3
+      max_depth: 2
+    hard:
+      max_entities: 6
+      max_relations: 5
+      max_depth: 3
+  
+  # 答案生成配置
+  answer_generation:
+    min_length: 50        # 答案最少字数
+    max_length: 300       # 答案最多字数
+    include_examples: true # 是否包含示例
+    cite_sources: true    # 是否引用来源
+    
+  # 质量控制
+  quality_control:
+    filter_duplicate: true     # 过滤重复问题
+    filter_too_simple: true    # 过滤过于简单的问题
+    filter_ambiguous: true     # 过滤歧义问题
+    min_question_length: 10    # 问题最少字数
+    max_question_length: 100   # 问题最多字数
+    
+  # 领域特定配置（可根据需要调整）
+  domain_specific:
+    technical_terms_weight: 1.5  # 技术术语权重
+    prefer_why_how: true         # 优先生成"为什么"和"如何"类问题
+    include_parameters: true     # 包含参数相关问题
+    include_applications: true   # 包含应用场景问题
