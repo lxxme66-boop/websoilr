@@ -1,0 +1,58 @@
+{
+  "models": {
+    "expert_model": {
+      "path": "/mnt/storage/models/Qwen/Qwen2.5-14B-Instruct",
+      "description": "专家模型（轨迹生成）",
+      "max_length": 8192,
+      "temperature": 0.7
+    },
+    "qa_generator_model": {
+      "path": "/mnt/storage/models/Qwen/Qwen2.5-14B-Instruct",
+      "description": "QA生成模型",
+      "max_length": 4096,
+      "temperature": 0.8
+    },
+    "reconstructor_model": {
+      "path": "/mnt/storage/models/deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
+      "description": "推理重建模型",
+      "max_length": 8192,
+      "temperature": 0.6
+    },
+    "kg_extractor_model": {
+      "path": "/mnt/data/LLM/lhy/models/fintuned_embedding/fv6",
+      "description": "知识图谱提取模型",
+      "embedding_dim": 768
+    }
+  },
+  "use_llm_validation": true,
+  "validity_threshold": 0.7,
+  "dataset_synthesis": {
+    "quality_checks": {
+      "min_question_length": 20,
+      "max_question_length": 600,
+      "min_answer_length": 20,
+      "answer_validation": true,
+      "check_answer_relevance": true
+    }
+  },
+  "question_generation": {
+    "question_types": {
+      "factual": {
+        "weight": 0.2,
+        "enabled": true
+      },
+      "reasoning": {
+        "weight": 0.3,
+        "enabled": true
+      },
+      "multi_hop": {
+        "weight": 0.3,
+        "enabled": true
+      },
+      "comparative": {
+        "weight": 0.2,
+        "enabled": true
+      }
+    }
+  }
+}

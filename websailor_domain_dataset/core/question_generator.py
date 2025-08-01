@@ -11,6 +11,8 @@ from dataclasses import dataclass
 import networkx as nx
 from collections import defaultdict
 import re
+import torch
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
 
 @dataclass
@@ -39,6 +41,13 @@ class QuestionGenerator:
         self.complexity_distribution = config.get('complexity_distribution', {})
         self.ensure_answerability = config.get('ensure_answerability', True)
         self.generate_distractors = config.get('generate_distractors', True)
+        
+        # 添加合理性阈值
+        self.validity_threshold = config.get('validity_threshold', 0.7)
+        
+        # 初始化质量检查模型
+        self.qa_validator_model = None
+        self.qa_validator_tokenizer = None
         
         # 加载问题模板
         self._load_templates()
@@ -675,3 +684,252 @@ class QuestionGenerator:
         # 这里可以从配置文件或外部文件加载更多模板
         # 当前使用配置中的模板
         pass
+    
+    def _initialize_qa_validator(self):
+        """初始化QA验证模型（用于检测答案错误/无关的问答对）"""
+        if self.qa_validator_model is None:
+            model_config = self.config.get('models', {})
+            qa_model_path = model_config.get('qa_generator_model', {}).get('path', 
+                                            '/mnt/storage/models/Qwen/Qwen2.5-14B-Instruct')
+            
+            self.logger.info(f"加载QA验证模型: {qa_model_path}")
+            self.qa_validator_tokenizer = AutoTokenizer.from_pretrained(qa_model_path)
+            self.qa_validator_model = AutoModelForCausalLM.from_pretrained(
+                qa_model_path,
+                torch_dtype=torch.float16,
+                device_map="auto"
+            )
+    
+    def _check_answer_relevance(self, question: str, answer: str) -> Tuple[bool, float]:
+        """使用大模型检查答案是否相关且正确"""
+        self._initialize_qa_validator()
+        
+        prompt = f"""请评估以下问答对的质量：
+
+问题：{question}
+答案：{answer}
+
+请从以下几个方面评估：
+1. 答案是否直接回答了问题？
+2. 答案内容是否准确合理？
+3. 答案是否包含明显的错误或矛盾？
+
+请给出：
+- 评分（0-1之间，1表示完全正确相关，0表示完全错误无关）
+- 是否通过（是/否）
+- 简短理由
+
+格式：
+评分：X.X
+通过：是/否
+理由：XXX
+"""
+        
+        inputs = self.qa_validator_tokenizer(prompt, return_tensors="pt").to(self.qa_validator_model.device)
+        
+        with torch.no_grad():
+            outputs = self.qa_validator_model.generate(
+                **inputs,
+                max_new_tokens=200,
+                temperature=0.3,
+                do_sample=True
+            )
+        
+        response = self.qa_validator_tokenizer.decode(outputs[0], skip_special_tokens=True)
+        response = response[len(prompt):].strip()
+        
+        # 解析响应
+        try:
+            lines = response.split('\n')
+            score = 0.5  # 默认分数
+            is_valid = False
+            
+            for line in lines:
+                if '评分' in line:
+                    score = float(line.split('：')[-1].strip())
+                elif '通过' in line:
+                    is_valid = '是' in line
+            
+            return is_valid, score
+        except:
+            # 解析失败时的默认值
+            return True, 0.7
+    
+    def _calculate_question_quality_score(self, qa: Dict) -> float:
+        """计算问题的质量分数"""
+        score = 0.0
+        
+        # 1. 问题长度分数（20-200字符最佳）
+        q_len = len(qa.get('question', ''))
+        if 20 <= q_len <= 200:
+            score += 2.0
+        elif q_len < 20:
+            score += 0.5
+        else:
+            score += 1.0
+        
+        # 2. 答案长度分数（50-500字符最佳）
+        a_len = len(qa.get('answer', ''))
+        if 50 <= a_len <= 500:
+            score += 2.0
+        elif a_len < 50:
+            score += 0.5
+        else:
+            score += 1.0
+        
+        # 3. 问题类型分数
+        q_type = qa.get('type', '')
+        type_scores = {
+            'reasoning': 2.0,
+            'multi_hop': 2.0,
+            'comparative': 1.5,
+            'factual': 1.0,
+            'counterfactual': 1.8,
+            'temporal': 1.5,
+            'causal': 1.8
+        }
+        score += type_scores.get(q_type, 1.0)
+        
+        # 4. 实体数量分数
+        entities = qa.get('entities', [])
+        if 2 <= len(entities) <= 5:
+            score += 1.5
+        elif len(entities) == 1:
+            score += 0.5
+        else:
+            score += 1.0
+        
+        # 5. 合理性分数加成
+        validity_score = qa.get('validity_score', 0.5)
+        score += validity_score * 2.0
+        
+        return score
+    
+    def _balance_question_types(self, qa_pairs: List[Dict]) -> List[Dict]:
+        """平衡不同类型问题的分布"""
+        # 按类型分组
+        type_groups = defaultdict(list)
+        for qa in qa_pairs:
+            q_type = qa.get('type', 'unknown')
+            type_groups[q_type].append(qa)
+        
+        # 计算每种类型的目标数量
+        total_target = min(len(qa_pairs), 100)  # 限制总数
+        num_types = len(type_groups)
+        if num_types == 0:
+            return qa_pairs
+        
+        target_per_type = max(1, total_target // num_types)
+        
+        # 平衡选择
+        balanced = []
+        for q_type, type_qa_pairs in type_groups.items():
+            # 按质量分数排序，选择最好的
+            type_qa_pairs.sort(key=lambda x: x.get('quality_score', 0), reverse=True)
+            selected = type_qa_pairs[:target_per_type]
+            balanced.extend(selected)
+        
+        return balanced
+    
+    def _filter_qa_pairs(self, qa_pairs: List[Dict]) -> List[Dict]:
+        """过滤和质量检查QA对（增强版）"""
+        if not qa_pairs:
+            return []
+        
+        filtered = []
+        
+        # 获取质量检查配置
+        quality_config = self.config.get('dataset_synthesis', {}).get('quality_checks', {})
+        min_q_len = quality_config.get('min_question_length', 20)
+        max_q_len = quality_config.get('max_question_length', 600)
+        min_a_len = quality_config.get('min_answer_length', 20)
+        
+        # 用于去重的集合
+        seen_questions = set()
+        
+        # 统计信息
+        filter_stats = {
+            'total': len(qa_pairs),
+            'length_filtered': 0,
+            'duplicate_filtered': 0,
+            'validity_filtered': 0,
+            'answer_filtered': 0,
+            'relevance_filtered': 0  # 新增：相关性过滤
+        }
+        
+        for qa in qa_pairs:
+            # 1. 长度检查
+            q_len = len(qa.get('question', ''))
+            if not (min_q_len <= q_len <= max_q_len):
+                filter_stats['length_filtered'] += 1
+                self.logger.info(f"长度过滤: {q_len} 不在 [{min_q_len}, {max_q_len}] 范围内")
+                continue
+            
+            # 2. 答案验证
+            answer = qa.get('answer', '')
+            if not answer or len(answer) < min_a_len:
+                filter_stats['answer_filtered'] += 1
+                self.logger.debug(f"答案过滤: 答案长度 {len(answer)} < {min_a_len}")
+                continue
+            
+            # 3. 合理性分数检查
+            validity_score = qa.get('validity_score', 0.85)
+            if validity_score < self.validity_threshold:
+                filter_stats['validity_filtered'] += 1
+                self.logger.debug(f"合理性过滤: 分数 {validity_score} < {self.validity_threshold}")
+                continue
+            
+            # 4. 去重（基于问题内容）
+            question_key = qa['question'].lower().strip()
+            # 生成更精确的指纹
+            import re
+            keywords = re.findall(r'[\u4e00-\u9fa5a-zA-Z]+', question_key)
+            keywords = [w for w in keywords if len(w) > 1]
+            fingerprint = ''.join(sorted(keywords[:8]))  # 取前8个关键词
+            
+            if fingerprint in seen_questions:
+                filter_stats['duplicate_filtered'] += 1
+                self.logger.debug(f"重复过滤: 问题指纹重复")
+                continue
+            
+            seen_questions.add(fingerprint)
+            
+            # 5. 使用大模型检查答案相关性和正确性
+            if self.config.get('use_llm_validation', True):
+                is_relevant, relevance_score = self._check_answer_relevance(
+                    qa['question'], qa['answer']
+                )
+                
+                if not is_relevant or relevance_score < 0.6:
+                    filter_stats['relevance_filtered'] += 1
+                    self.logger.info(f"相关性过滤: 问题 '{qa['question'][:50]}...' 的答案相关性分数 {relevance_score}")
+                    continue
+                
+                # 更新合理性分数
+                qa['validity_score'] = (validity_score + relevance_score) / 2
+            
+            # 6. 质量分数计算和筛选
+            quality_score = self._calculate_question_quality_score(qa)
+            qa['quality_score'] = quality_score
+            
+            # 只保留质量分数较高的问题
+            if quality_score >= 5.0:  # 设定质量阈值
+                filtered.append(qa)
+        
+        # 确保类型分布均衡
+        balanced_qa = self._balance_question_types(filtered)
+        
+        # 最终排序（质量分数降序）
+        balanced_qa.sort(key=lambda x: x.get('quality_score', 0), reverse=True)
+        
+        # 记录过滤统计
+        self.logger.info(f"质量过滤统计:")
+        self.logger.info(f"  总数: {filter_stats['total']}")
+        self.logger.info(f"  长度过滤: {filter_stats['length_filtered']}")
+        self.logger.info(f"  答案过滤: {filter_stats['answer_filtered']}")
+        self.logger.info(f"  合理性过滤: {filter_stats['validity_filtered']}")
+        self.logger.info(f"  重复过滤: {filter_stats['duplicate_filtered']}")
+        self.logger.info(f"  相关性过滤: {filter_stats['relevance_filtered']}")
+        self.logger.info(f"  最终保留: {len(balanced_qa)}")
+        
+        return balanced_qa
