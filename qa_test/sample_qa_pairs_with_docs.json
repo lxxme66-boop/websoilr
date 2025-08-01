@@ -1,0 +1,104 @@
+[
+  {
+    "question": "什么是机器学习？",
+    "answer": "机器学习是人工智能的一个分支，它使计算机系统能够从数据中学习和改进，而无需进行明确的编程。机器学习算法通过识别数据中的模式来构建数学模型，然后使用这些模型对新数据进行预测或决策。主要类型包括监督学习、无监督学习和强化学习。",
+    "document_id": "doc_001",
+    "id": "qa_001",
+    "metadata": {
+      "source": "AI教材",
+      "category": "定义"
+    }
+  },
+  {
+    "question": "如何提高深度学习模型的性能？",
+    "answer": "提高深度学习模型性能的方法包括：1. 增加训练数据量和多样性；2. 优化网络架构，如调整层数、神经元数量；3. 使用正则化技术（Dropout、L1/L2正则化）防止过拟合；4. 调整超参数（学习率、批次大小等）；5. 使用数据增强技术；6. 采用迁移学习利用预训练模型；7. 使用集成学习方法；8. 优化损失函数设计。",
+    "document_id": "doc_002",
+    "id": "qa_002",
+    "metadata": {
+      "source": "深度学习指南",
+      "category": "方法"
+    }
+  },
+  {
+    "question": "Python和Java的主要区别是什么？",
+    "answer": "Python是解释型语言，Java是编译型语言。Python语法简洁，适合快速开发和数据科学；Java性能更好，适合大型企业应用。Python动态类型，Java静态类型。",
+    "document_id": "doc_003",
+    "id": "qa_003",
+    "metadata": {
+      "source": "编程语言比较",
+      "category": "比较"
+    }
+  },
+  {
+    "question": "什么是区块链技术？",
+    "answer": "区块链是一种分布式账本技术，通过密码学确保数据安全和不可篡改。它由按时间顺序链接的区块组成，具有去中心化、透明性、不可篡改性等特征。",
+    "document_id": "doc_004",
+    "id": "qa_004",
+    "metadata": {
+      "source": "区块链技术概述",
+      "category": "定义"
+    }
+  },
+  {
+    "question": "NLP包含哪些基础任务？",
+    "answer": "NLP基础任务包括分词、词性标注、命名实体识别、句法分析和语义分析。高级应用包括机器翻译、文本摘要、情感分析和问答系统。",
+    "document_id": "doc_005",
+    "id": "qa_005",
+    "metadata": {
+      "source": "NLP技术手册",
+      "category": "列举"
+    }
+  },
+  {
+    "question": "什么是云计算？",
+    "answer": "云计算是通过互联网提供计算资源和服务的模式，包括IaaS、PaaS和SaaS三种服务模型。",
+    "document_id": null,
+    "id": "qa_006",
+    "metadata": {
+      "source": "未知",
+      "category": "定义",
+      "note": "这个问答对没有对应的源文档"
+    }
+  },
+  {
+    "question": "如何学习编程？",
+    "answer": "学习编程需要选择合适的语言，理解基本概念，多练习，参与项目实践。",
+    "document_id": null,
+    "id": "qa_007",
+    "metadata": {
+      "source": "通用知识",
+      "category": "方法",
+      "note": "这是一个过于通用的问题，与特定文档无关"
+    }
+  },
+  {
+    "question": "深度学习和机器学习有什么关系？",
+    "answer": "深度学习是机器学习的一个子领域，它基于人工神经网络的概念。深度学习模型由多层神经元组成，能够学习数据的层次化表示。",
+    "document_id": "doc_002",
+    "id": "qa_008",
+    "metadata": {
+      "source": "深度学习指南",
+      "category": "关系"
+    }
+  },
+  {
+    "question": "监督学习使用什么类型的数据？",
+    "answer": "监督学习使用标记的训练数据，即每个输入样本都有对应的正确输出标签。",
+    "document_id": "doc_001",
+    "id": "qa_009",
+    "metadata": {
+      "source": "AI教材",
+      "category": "细节"
+    }
+  },
+  {
+    "question": "Transformer架构对NLP有什么影响？",
+    "answer": "Transformer架构的出现，如BERT、GPT等预训练语言模型，极大地推动了NLP领域的发展。这些模型通过在大规模文本数据上预训练，能够捕捉语言的深层语义和语法规律。",
+    "document_id": "doc_005",
+    "id": "qa_010",
+    "metadata": {
+      "source": "NLP技术手册",
+      "category": "影响"
+    }
+  }
+]

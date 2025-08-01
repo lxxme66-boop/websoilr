@@ -120,20 +120,46 @@ preprocessing:
 
 # 评分权重配置
 weights:
-  # LLM评测权重
-  llm_score: 0.4
+  relevance: 0.3
+  completeness: 0.25
+  accuracy: 0.25
+  clarity: 0.2
+
+# 文档感知评测配置
+document_aware_evaluation:
+  # 是否启用文档感知评测
+  enabled: true
   
-  # 语义相似度权重
-  semantic_similarity: 0.2
+  # 是否使用LLM评估提取合理性
+  use_llm_evaluation: true
   
-  # 答案质量权重
-  answer_quality: 0.2
+  # 提取合理性评分权重
+  extraction_weights:
+    content_relevance: 0.25      # 内容相关性权重
+    answer_grounding: 0.30       # 答案依据性权重
+    question_specificity: 0.20   # 问题具体性权重
+    information_completeness: 0.15  # 信息完整性权重
+    llm_evaluation: 0.10         # LLM评估权重
   
-  # 语言流畅度权重
-  fluency: 0.1
+  # TF-IDF向量化器配置
+  tfidf_config:
+    max_features: 5000
+    ngram_range: [1, 2]
   
-  # 关键词覆盖权重
-  keyword_coverage: 0.1
+  # 相似度阈值
+  similarity_thresholds:
+    document_match: 0.5          # 文档匹配相似度阈值
+    fallback_match: 0.3          # 回退匹配相似度阈值
+  
+  # 答案评估配置
+  answer_evaluation:
+    min_keyword_coverage: 0.6    # 最小关键词覆盖率
+    min_answer_length: 20        # 最小答案长度
+    max_answer_length: 500       # 最大答案长度
+  
+  # 问题评估配置
+  question_evaluation:
+    general_question_penalty: 0.7  # 通用问题惩罚系数
 
 # 筛选阈值配置
 thresholds:
