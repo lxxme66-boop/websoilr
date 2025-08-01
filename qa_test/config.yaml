@@ -3,13 +3,16 @@
 # 大语言模型配置
 llm:
   # 提供商: openai, anthropic, local
-  provider: openai
+  provider: local  # 改为使用本地大模型
   
   # API密钥（也可以通过环境变量设置）
   # api_key: your-api-key-here
   
   # 模型名称
-  model: gpt-4
+  # OpenAI: gpt-4, gpt-3.5-turbo
+  # Anthropic: claude-3-opus-20240229, claude-3-sonnet-20240229
+  # Local: 取决于你的本地模型
+  model: qwen2.5:7b  # 本地模型示例
   
   # 生成参数
   temperature: 0.3
@@ -19,8 +22,61 @@ llm:
   cache_enabled: true
   
   # 本地模型配置（当provider为local时使用）
-  # endpoint_url: http://localhost:8000/v1/chat/completions
-  # timeout: 30
+  # API类型: ollama, vllm, openai-compatible
+  api_type: ollama
+  
+  # 端点URL（如果不设置，将使用默认值）
+  # Ollama默认: http://localhost:11434/api/chat
+  # vLLM默认: http://localhost:8000/v1/chat/completions
+  # endpoint_url: http://localhost:11434/api/chat
+  
+  # 请求超时时间（秒）
+  timeout: 60
+  
+  # 可选：API密钥（某些本地服务可能需要）
+  # api_key: your-local-api-key
+  
+  # 可选：自定义请求头
+  # headers:
+  #   X-Custom-Header: value
+
+# 本地大模型配置示例
+local_llm_examples:
+  # Ollama配置示例
+  ollama_example:
+    provider: local
+    api_type: ollama
+    model: qwen2.5:7b  # 或 llama3.2:3b, deepseek-coder-v2:16b 等
+    endpoint_url: http://localhost:11434/api/chat
+    temperature: 0.3
+    max_tokens: 500
+  
+  # vLLM配置示例
+  vllm_example:
+    provider: local
+    api_type: vllm
+    model: Qwen/Qwen2.5-7B-Instruct  # HuggingFace模型ID
+    endpoint_url: http://localhost:8000/v1/chat/completions
+    temperature: 0.3
+    max_tokens: 500
+  
+  # FastChat配置示例
+  fastchat_example:
+    provider: local
+    api_type: openai-compatible
+    model: vicuna-7b-v1.5
+    endpoint_url: http://localhost:8000/v1/chat/completions
+    temperature: 0.3
+    max_tokens: 500
+  
+  # LM Studio配置示例
+  lm_studio_example:
+    provider: local
+    api_type: openai-compatible
+    model: TheBloke/Llama-2-7B-Chat-GGUF
+    endpoint_url: http://localhost:1234/v1/chat/completions
+    temperature: 0.3
+    max_tokens: 500
 
 # 语义分析配置
 semantic:
