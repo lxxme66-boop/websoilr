@@ -14,7 +14,10 @@
 - **答案深度**：评估答案的详细程度和信息量
 
 ### 2. 混合评测方法
-- **大语言模型评测**：使用OpenAI GPT或其他LLM进行智能评估
+- **大语言模型评测**：
+  - 支持本地大模型（Ollama、vLLM、FastChat等）
+  - 支持商业API（OpenAI GPT、Anthropic Claude）
+  - 灵活的API配置，易于扩展
 - **传统NLP指标**：
   - BLEU分数（评估文本相似度）
   - ROUGE分数（评估文本摘要质量）
@@ -41,7 +44,8 @@ pip install -r requirements.txt
 
 ### 3. 配置文件
 编辑 `config.yaml` 文件，配置以下参数：
-- API密钥（OpenAI等）
+- LLM提供商（local/openai/anthropic）
+- 本地模型设置（参见 [LOCAL_LLM_SETUP.md](LOCAL_LLM_SETUP.md)）
 - 评测参数（权重、阈值等）
 - 模型选择
 - 输出设置

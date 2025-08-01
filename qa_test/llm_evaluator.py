@@ -9,10 +9,21 @@ import time
 import logging
 from typing import Dict, List, Optional, Tuple
 from abc import ABC, abstractmethod
-import openai
 from tenacity import retry, stop_after_attempt, wait_exponential
-import anthropic
 import requests
+
+# Optional imports - only import if needed
+try:
+    import openai
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+
+try:
+    import anthropic
+    ANTHROPIC_AVAILABLE = True
+except ImportError:
+    ANTHROPIC_AVAILABLE = False
 
 
 class LLMEvaluatorBase(ABC):
@@ -34,6 +45,9 @@ class OpenAIEvaluator(LLMEvaluatorBase):
         Args:
             config: 配置字典，包含api_key, model等
         """
+        if not OPENAI_AVAILABLE:
+            raise ImportError("OpenAI library not installed. Please install with: pip install openai")
+            
         self.api_key = config.get('api_key') or os.getenv('OPENAI_API_KEY')
         self.model = config.get('model', 'gpt-4')
         self.temperature = config.get('temperature', 0.3)
@@ -156,6 +170,9 @@ class AnthropicEvaluator(LLMEvaluatorBase):
         Args:
             config: 配置字典
         """
+        if not ANTHROPIC_AVAILABLE:
+            raise ImportError("Anthropic library not installed. Please install with: pip install anthropic")
+            
         self.api_key = config.get('api_key') or os.getenv('ANTHROPIC_API_KEY')
         self.model = config.get('model', 'claude-3-opus-20240229')
         self.max_tokens = config.get('max_tokens', 500)
@@ -250,53 +267,133 @@ class AnthropicEvaluator(LLMEvaluatorBase):
 
 
 class LocalLLMEvaluator(LLMEvaluatorBase):
-    """本地LLM评测器（通过API）"""
+    """本地LLM评测器（支持多种本地LLM服务）"""
     
     def __init__(self, config: Dict):
         """
         初始化本地LLM评测器
         
         Args:
-            config: 配置字典，包含endpoint_url等
+            config: 配置字典，包含endpoint_url, api_type等
         """
-        self.endpoint_url = config.get('endpoint_url', 'http://localhost:8000/v1/chat/completions')
-        self.model = config.get('model', 'local-model')
-        self.timeout = config.get('timeout', 30)
+        # 支持的API类型：ollama, vllm, openai-compatible
+        self.api_type = config.get('api_type', 'openai-compatible')
+        
+        # 根据API类型设置默认端点
+        default_endpoints = {
+            'ollama': 'http://localhost:11434/api/chat',
+            'vllm': 'http://localhost:8000/v1/chat/completions',
+            'openai-compatible': 'http://localhost:8000/v1/chat/completions'
+        }
+        
+        self.endpoint_url = config.get('endpoint_url', default_endpoints.get(self.api_type))
+        self.model = config.get('model', 'qwen2.5:7b')  # 默认使用Qwen2.5
+        self.timeout = config.get('timeout', 60)  # 增加超时时间
+        self.temperature = config.get('temperature', 0.3)
+        self.max_tokens = config.get('max_tokens', 500)
+        
+        # API密钥（某些本地服务可能需要）
+        self.api_key = config.get('api_key', '')
+        
+        # 额外的请求头
+        self.headers = config.get('headers', {})
+        if self.api_key:
+            self.headers['Authorization'] = f'Bearer {self.api_key}'
+        
         self.logger = logging.getLogger('LocalLLMEvaluator')
+        self.logger.info(f"Initialized {self.api_type} evaluator with endpoint: {self.endpoint_url}")
     
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
     def evaluate(self, question: str, answer: str) -> Dict:
         """使用本地LLM评测问答对"""
         prompt = self._build_evaluation_prompt(question, answer)
         
         try:
-            response = requests.post(
-                self.endpoint_url,
-                json={
-                    "model": self.model,
-                    "messages": [
-                        {"role": "system", "content": self._get_system_prompt()},
-                        {"role": "user", "content": prompt}
-                    ],
-                    "temperature": 0.3,
-                    "max_tokens": 500
-                },
-                timeout=self.timeout
-            )
+            if self.api_type == 'ollama':
+                response = self._call_ollama_api(prompt)
+            else:
+                response = self._call_openai_compatible_api(prompt)
             
-            response.raise_for_status()
-            result_data = response.json()
-            
-            result_text = result_data['choices'][0]['message']['content']
+            result_text = self._extract_response_text(response)
             result = self._parse_evaluation_result(result_text)
             
             result['model'] = self.model
             result['raw_response'] = result_text
+            result['api_type'] = self.api_type
             
             return result
             
+        except requests.exceptions.Timeout:
+            self.logger.error(f"Request timeout after {self.timeout}s")
+            raise Exception(f"Local LLM request timeout. Please check if the service is running at {self.endpoint_url}")
+        except requests.exceptions.ConnectionError:
+            self.logger.error(f"Cannot connect to {self.endpoint_url}")
+            raise Exception(f"Cannot connect to local LLM service at {self.endpoint_url}. Please ensure the service is running.")
         except Exception as e:
             self.logger.error(f"Local LLM API error: {e}")
             raise
+    
+    def _call_ollama_api(self, prompt: str) -> Dict:
+        """调用Ollama API"""
+        response = requests.post(
+            self.endpoint_url,
+            json={
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": self._get_system_prompt()},
+                    {"role": "user", "content": prompt}
+                ],
+                "stream": False,
+                "options": {
+                    "temperature": self.temperature,
+                    "num_predict": self.max_tokens
+                }
+            },
+            headers=self.headers,
+            timeout=self.timeout
+        )
+        response.raise_for_status()
+        return response.json()
+    
+    def _call_openai_compatible_api(self, prompt: str) -> Dict:
+        """调用OpenAI兼容的API（vLLM, FastChat等）"""
+        response = requests.post(
+            self.endpoint_url,
+            json={
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": self._get_system_prompt()},
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": self.temperature,
+                "max_tokens": self.max_tokens,
+                "stream": False
+            },
+            headers={**self.headers, 'Content-Type': 'application/json'},
+            timeout=self.timeout
+        )
+        response.raise_for_status()
+        return response.json()
+    
+    def _extract_response_text(self, response: Dict) -> str:
+        """从API响应中提取文本"""
+        if self.api_type == 'ollama':
+            # Ollama返回格式
+            if 'message' in response and 'content' in response['message']:
+                return response['message']['content']
+            elif 'response' in response:
+                return response['response']
+        
+        # OpenAI兼容格式
+        if 'choices' in response and len(response['choices']) > 0:
+            choice = response['choices'][0]
+            if 'message' in choice and 'content' in choice['message']:
+                return choice['message']['content']
+            elif 'text' in choice:
+                return choice['text']
+        
+        # 如果无法解析，返回整个响应
+        return str(response)
     
     def _get_system_prompt(self) -> str:
         """获取系统提示词"""
@@ -308,7 +405,16 @@ class LocalLLMEvaluator(LLMEvaluatorBase):
 4. 清晰度（0-1分）：答案表达是否清晰易懂
 5. 深度（0-1分）：答案是否提供了足够的细节和深度
 
-请以JSON格式返回评分结果。"""
+请以JSON格式返回评分结果，格式如下：
+{
+    "relevance": 0.9,
+    "accuracy": 0.8,
+    "completeness": 0.85,
+    "clarity": 0.9,
+    "depth": 0.7,
+    "score": 0.84,
+    "reason": "答案准确回答了问题，表达清晰，但在某些细节上还可以更深入"
+}"""
     
     def _build_evaluation_prompt(self, question: str, answer: str) -> str:
         """构建评测提示词"""
@@ -318,7 +424,7 @@ class LocalLLMEvaluator(LLMEvaluatorBase):
 
 答案：{answer}
 
-请按照指定格式返回JSON评分结果。"""
+请严格按照JSON格式返回评分结果，包含relevance、accuracy、completeness、clarity、depth、score和reason字段。"""
     
     def _parse_evaluation_result(self, result_text: str) -> Dict:
         """解析评测结果"""
