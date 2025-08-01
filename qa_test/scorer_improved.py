@@ -24,14 +24,15 @@ class ImprovedScorer:
         
         # 改进的权重配置 - 更符合专家偏好
         self.default_weights = {
-            'llm_score': 0.25,          # 降低LLM评测权重
-            'semantic_similarity': 0.10,  # 降低语义相似度权重
-            'answer_quality': 0.20,      # 保持答案质量权重
+            'llm_score': 0.20,          # 降低LLM评测权重
+            'semantic_similarity': 0.08,  # 降低语义相似度权重
+            'answer_quality': 0.15,      # 降低答案质量权重
             'fluency': 0.05,            # 降低流畅度权重
             'keyword_coverage': 0.05,    # 降低关键词权重
-            'conciseness': 0.15,        # 新增：简洁性
-            'structure_clarity': 0.10,   # 新增：结构清晰度
-            'actionability': 0.10        # 新增：可操作性
+            'conciseness': 0.12,        # 新增：简洁性
+            'structure_clarity': 0.08,   # 新增：结构清晰度
+            'actionability': 0.08,       # 新增：可操作性
+            'document_validity': 0.19    # 新增：文档有效性（最重要）
         }
         
         # 使用提供的权重或默认权重

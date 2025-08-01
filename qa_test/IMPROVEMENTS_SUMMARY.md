@@ -36,19 +36,20 @@
 
 ### 1. 新增评分维度
 
-在 `scorer_improved.py` 中新增了三个关键评分维度：
+在 `scorer_improved.py` 中新增了四个关键评分维度：
 
 ```python
 # 改进的权重配置
 self.default_weights = {
-    'llm_score': 0.25,          # 降低（原40%）
-    'semantic_similarity': 0.10,  # 降低（原20%）
-    'answer_quality': 0.20,      # 保持
+    'llm_score': 0.20,          # 降低（原40%）
+    'semantic_similarity': 0.08,  # 降低（原20%）
+    'answer_quality': 0.15,      # 降低
     'fluency': 0.05,            # 降低（原10%）
     'keyword_coverage': 0.05,    # 降低（原10%）
-    'conciseness': 0.15,        # 新增：简洁性
-    'structure_clarity': 0.10,   # 新增：结构清晰度
-    'actionability': 0.10        # 新增：可操作性
+    'conciseness': 0.12,        # 新增：简洁性
+    'structure_clarity': 0.08,   # 新增：结构清晰度
+    'actionability': 0.08,       # 新增：可操作性
+    'document_validity': 0.19    # 新增：文档有效性（最重要）
 }
 ```
 
@@ -81,7 +82,24 @@ def compute_actionability_score(self, answer: str) -> float:
     # 检查因果关系
 ```
 
-### 5. 专家对齐惩罚机制
+### 5. 文档有效性检查
+
+在 `document_relevance_checker.py` 中实现了全面的文档相关性验证：
+
+```python
+def compute_qa_validity_score(self, question: str, answer: str) -> Dict:
+    # 检查问题相关性
+    # - 语义相关性：问题是否与文档内容语义相关
+    # - 关键词相关性：问题中的关键词是否在文档中出现
+    # - 事实基础性：问题中的实体是否在文档中存在
+    
+    # 检查答案一致性
+    # - 事实准确性：答案是否有文档支持
+    # - 信息覆盖度：答案是否充分利用文档信息
+    # - 幻觉风险：答案是否包含文档外的信息
+```
+
+### 6. 专家对齐惩罚机制
 
 ```python
 def apply_expert_alignment_penalty(self, result: Dict) -> float:
@@ -92,7 +110,7 @@ def apply_expert_alignment_penalty(self, result: Dict) -> float:
 
 ## 使用方法
 
-### 1. 基础使用
+### 1. 基础使用（不验证文档）
 
 ```bash
 python qa_test/evaluate_qa_improved.py \
@@ -101,16 +119,28 @@ python qa_test/evaluate_qa_improved.py \
     --top-k 10
 ```
 
-### 2. 专家模式
-
-启用更严格的评分标准：
+### 2. 带文档验证（推荐）
 
 ```bash
-python qa_test/evaluate_qa_improved.py \
+python qa_test/evaluate_qa_with_docs.py \
     --input your_qa_pairs.json \
     --output best_qa_pairs.json \
+    --docs original_documents.json \
     --top-k 10 \
-    --expert-mode
+    --min-validity 0.5
+```
+
+### 3. 严格模式
+
+启用更严格的文档相关性要求：
+
+```bash
+python qa_test/evaluate_qa_with_docs.py \
+    --input your_qa_pairs.json \
+    --output best_qa_pairs.json \
+    --docs original_documents.json \
+    --top-k 10 \
+    --strict-mode
 ```
 
 ### 3. 自定义配置
@@ -135,6 +165,8 @@ weights:
 2. **惩罚冗长答案**：过长、重复的答案会被降低评分
 3. **奖励结构化答案**：有清晰结构和具体步骤的答案会获得更高分数
 4. **强调实用性**：可操作性强的答案会被优先选择
+5. **确保文档基础**：只保留基于原始文档的合理问答对
+6. **减少幻觉**：过滤掉包含文档外信息的答案
 
 ## 验证建议
 
