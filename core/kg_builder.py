@@ -59,138 +59,178 @@ class IndustrialKGBuilder:
         return chunks
     
     def _extract_knowledge(self, text_chunk: str) -> Tuple[List[Dict], List[Dict]]:
-        """使用大模型提取实体和关系"""
-        # 实体提取 Prompt - 改进版本，强调必需字段
-        entity_prompt = f"""你是一个{self.domain}领域的知识工程师。请从以下技术文档中提取关键实体。
+        """使用大模型提取实体和关系 - 优化版本"""
+        
+        # 使用统一的prompt一次性提取实体和关系，提高效率
+        unified_prompt = f"""你是一个{self.domain}领域的知识工程师。请仔细阅读以下技术文档，然后提取关键实体和它们之间的关系。
 
 文档内容：
 {text_chunk}
 
-请按以下JSON格式输出实体列表，每个实体必须包含以下字段：
-[
-  {{
-    "entity_id": "unique_id",  // 必需：唯一标识符，使用英文或拼音，不含空格
-    "name": "实体名称",        // 必需：实体的中文或英文名称
-    "type": "实体类型",        // 必需：如材料、方法、参数、样品等
-    "description": "简短描述"   // 必需：对实体的简要说明
-  }},
-  ...
-]
+请按以下JSON格式输出，确保所有字段都完整：
+{{
+    "entities": [
+        {{
+            "entity_id": "unique_id",  // 必需：唯一标识符，使用英文或拼音，不含空格
+            "name": "实体名称",        // 必需：实体的中文或英文名称
+            "type": "实体类型",        // 必需：如材料、方法、参数、样品等
+            "description": "简短描述"   // 必需：对实体的简要说明
+        }}
+    ],
+    "relations": [
+        {{
+            "source": "源实体的entity_id",
+            "target": "目标实体的entity_id", 
+            "relation": "关系类型",
+            "description": "关系描述"
+        }}
+    ]
+}}
 
 注意：
 1. entity_id 必须是唯一的，使用英文或拼音，不含空格和特殊字符
 2. 所有字段都是必需的，不能省略
-3. 只返回JSON数组，不要其他内容"""
+3. relations中的source和target必须使用entities列表中的entity_id
+4. 只返回JSON对象，不要其他内容"""
 
-        # 调用模型生成实体
-        entities_text = self.model_manager.generate_text(
+        # 调用模型一次性生成实体和关系
+        response_text = self.model_manager.generate_text(
             "qa_generator",
-            entity_prompt,
-            max_new_tokens=512,
-            temperature=0.3
+            unified_prompt,
+            max_new_tokens=1024,  # 增加token限制以容纳更多内容
+            temperature=0.2       # 略微降低温度以提高确定性和速度
         )
 
-        logger.debug(f"[原始实体响应] {entities_text}")
+        logger.debug(f"[原始响应] {response_text}")
 
-        entities = self._parse_json_response(entities_text, [])
-
-        if not entities:
-            logger.warning("未能解析出有效实体")
+        # 解析响应
+        result = self._parse_unified_response(response_text)
+        
+        if not result:
+            logger.warning("未能解析出有效结果")
             return [], []
 
-        # 清洗和规范化实体
+        entities = result.get('entities', [])
+        relations = result.get('relations', [])
+
+        # 清洗和规范化数据
         clean_entities = self._clean_entities(entities)
+        clean_relations = self._clean_relations(relations, clean_entities)
 
-        if not clean_entities:
-            logger.warning("实体字段缺失严重，跳过该段文本")
-            return [], []
+        return clean_entities, clean_relations
 
-        # 构造实体描述字符串，用于关系抽取 Prompt
-        entities_desc = "\n".join([
-            f"- {e['name']} ({e['entity_id']}): {e['type']}"
-            for e in clean_entities
-        ])
-
-        relation_prompt = f"""基于以下实体和文档内容，提取实体间的关系。
-
-实体列表：
-{entities_desc}
-
-文档内容：
-{text_chunk}
-
-请按以下JSON格式输出关系列表：
-[
-  {{
-    "source": "源实体的entity_id",
-    "target": "目标实体的entity_id",
-    "relation": "关系类型",
-    "description": "关系描述"
-  }},
-  ...
-]
-
-注意：source和target必须使用实体列表中的entity_id
-只返回JSON数组，不要其他内容。"""
-
-        relations_text = self.model_manager.generate_text(
-            "qa_generator",
-            relation_prompt,
-            max_new_tokens=512,
-            temperature=0.3
-        )
-
-        logger.debug(f"[原始关系响应] {relations_text}")
-
-        relations = self._parse_json_response(relations_text, [])
-
-        return clean_entities, relations
+    def _parse_unified_response(self, text: str) -> Dict:
+        """解析统一响应的JSON"""
+        # 清理响应文本
+        text = text.strip()
+        
+        # 尝试直接解析
+        try:
+            result = json.loads(text)
+            if isinstance(result, dict) and ('entities' in result or 'relations' in result):
+                return result
+        except json.JSONDecodeError:
+            pass
+        
+        # 移除可能的markdown标记
+        text = re.sub(r'^```(?:json)?\s*', '', text, flags=re.MULTILINE)
+        text = re.sub(r'\s*```$', '', text, flags=re.MULTILINE)
+        text = text.strip()
+        
+        # 再次尝试解析
+        try:
+            result = json.loads(text)
+            if isinstance(result, dict) and ('entities' in result or 'relations' in result):
+                return result
+        except json.JSONDecodeError:
+            pass
+        
+        # 尝试提取JSON对象
+        json_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
+        matches = re.findall(json_pattern, text, re.DOTALL)
+        
+        for match in matches:
+            try:
+                result = json.loads(match)
+                if isinstance(result, dict) and ('entities' in result or 'relations' in result):
+                    return result
+            except json.JSONDecodeError:
+                continue
+        
+        logger.warning(f"Failed to parse unified response: {text[:200]}...")
+        return {'entities': [], 'relations': []}
 
     def _clean_entities(self, entities: List[Dict]) -> List[Dict]:
         """清洗和规范化实体数据"""
         clean_entities = []
+        seen_ids = set()
         
         for e in entities:
+            if not isinstance(e, dict):
+                continue
+                
             # 处理字段名称的变体
             entity = {}
             
-            # 处理 ID 字段（可能是 id, entity_id 等）
+            # 处理 ID 字段
             if 'entity_id' in e:
-                entity['entity_id'] = e['entity_id']
+                entity['entity_id'] = str(e['entity_id'])
             elif 'id' in e:
-                entity['entity_id'] = e['id']
+                entity['entity_id'] = str(e['id'])
             else:
-                logger.warning(f"[实体缺少ID] {e}")
-                # 尝试从 name 生成 ID
                 if 'name' in e:
                     entity['entity_id'] = self._generate_entity_id(e['name'])
                 else:
                     continue
             
-            # 处理 name 字段
-            if 'name' in e:
-                entity['name'] = e['name']
-            else:
-                logger.warning(f"[实体缺少name] {e}")
-                # 使用 description 或 entity_id 作为 name
-                if 'description' in e:
-                    entity['name'] = e['description'][:50]  # 限制长度
-                else:
-                    entity['name'] = entity['entity_id']
+            # 确保ID唯一
+            original_id = entity['entity_id']
+            counter = 1
+            while entity['entity_id'] in seen_ids:
+                entity['entity_id'] = f"{original_id}_{counter}"
+                counter += 1
+            seen_ids.add(entity['entity_id'])
             
-            # 处理 type 字段
+            # 处理其他字段
+            entity['name'] = e.get('name', entity['entity_id'])
             entity['type'] = e.get('type', '未分类')
-            
-            # 处理 description 字段
             entity['description'] = e.get('description', entity['name'])
             
-            # 验证必需字段
-            if all(field in entity for field in ['entity_id', 'name', 'type', 'description']):
-                clean_entities.append(entity)
-            else:
-                logger.warning(f"[实体字段不完整] {entity}")
+            clean_entities.append(entity)
         
         return clean_entities
+
+    def _clean_relations(self, relations: List[Dict], entities: List[Dict]) -> List[Dict]:
+        """清洗和规范化关系数据"""
+        clean_relations = []
+        entity_ids = {e['entity_id'] for e in entities}
+        
+        for r in relations:
+            if not isinstance(r, dict):
+                continue
+                
+            # 验证必需字段
+            if not all(k in r for k in ['source', 'target']):
+                continue
+            
+            # 验证实体ID存在
+            if r['source'] not in entity_ids or r['target'] not in entity_ids:
+                continue
+            
+            # 避免自环
+            if r['source'] == r['target']:
+                continue
+            
+            relation = {
+                'source': r['source'],
+                'target': r['target'],
+                'relation': r.get('relation', '相关'),
+                'description': r.get('description', '')
+            }
+            
+            clean_relations.append(relation)
+        
+        return clean_relations
     
     def _generate_entity_id(self, name: str) -> str:
         """从名称生成实体ID"""
@@ -199,51 +239,14 @@ class IndustrialKGBuilder:
         # 替换空格为下划线
         entity_id = re.sub(r'[\s-]+', '_', entity_id)
         # 限制长度
-        return entity_id[:50]
-
-    def _parse_json_response(self, text: str, default_value):
-        """解析 JSON 响应，支持多种格式"""
-        try:
-            # 首先尝试直接解析
-            return json.loads(text)
-        except json.JSONDecodeError:
-            pass
-        
-        try:
-            # 尝试找到JSON数组
-            json_match = re.search(r'\[.*?\]', text, re.DOTALL)
-            if json_match:
-                json_str = json_match.group()
-                return json.loads(json_str)
-        except Exception:
-            pass
-        
-        try:
-            # 尝试提取多个JSON对象
-            matches = re.findall(r'\{[^{}]*\}', text)
-            entities = []
-            for match in matches:
-                try:
-                    obj = json.loads(match)
-                    entities.append(obj)
-                except json.JSONDecodeError:
-                    continue
-            
-            if entities:
-                return entities
-        except Exception:
-            pass
-        
-        logger.warning(f"Failed to parse JSON response: {text[:200]}...")
-        return default_value
+        return entity_id[:50] if entity_id else "unknown_entity"
     
     def _add_to_graph(self, entities: List[Dict], relations: List[Dict]):
         """将实体和关系添加到图中"""
         # 添加实体节点
         for entity in entities:
-            node_id = entity.get('entity_id', entity.get('id'))
+            node_id = entity.get('entity_id')
             if not node_id:
-                logger.warning(f"Skip entity without ID: {entity}")
                 continue
                 
             self.graph.add_node(
@@ -268,3 +271,60 @@ class IndustrialKGBuilder:
                     )
                 else:
                     logger.warning(f"Relation references non-existent nodes: {source} -> {target}")
+
+
+class IndustrialKGBuilderV2(IndustrialKGBuilder):
+    """知识图谱构建器V2 - 不使用思考提示的快速版本"""
+    
+    def _extract_knowledge(self, text_chunk: str) -> Tuple[List[Dict], List[Dict]]:
+        """使用大模型提取实体和关系 - 快速版本（无思考提示）"""
+        
+        # 移除"仔细阅读"和"思考"的提示词，直接要求提取
+        fast_prompt = f"""你是一个{self.domain}领域的知识工程师。从以下技术文档中提取关键实体和关系。
+
+文档内容：
+{text_chunk}
+
+直接输出JSON格式：
+{{
+    "entities": [
+        {{
+            "entity_id": "unique_id",
+            "name": "实体名称",
+            "type": "实体类型",
+            "description": "简短描述"
+        }}
+    ],
+    "relations": [
+        {{
+            "source": "源实体entity_id",
+            "target": "目标实体entity_id", 
+            "relation": "关系类型",
+            "description": "关系描述"
+        }}
+    ]
+}}
+
+只返回JSON，不要解释。"""
+
+        # 使用更低的温度和更快的生成
+        response_text = self.model_manager.generate_text(
+            "qa_generator",
+            fast_prompt,
+            max_new_tokens=768,   # 减少token限制
+            temperature=0.1       # 更低温度，更快生成
+        )
+
+        # 使用父类的解析和清洗方法
+        result = self._parse_unified_response(response_text)
+        
+        if not result:
+            return [], []
+
+        entities = result.get('entities', [])
+        relations = result.get('relations', [])
+
+        clean_entities = self._clean_entities(entities)
+        clean_relations = self._clean_relations(relations, clean_entities)
+
+        return clean_entities, clean_relations
