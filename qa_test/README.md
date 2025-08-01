@@ -1,4 +1,31 @@
-# 问答对质量评测系统
+# QA Test - 问答对质量评测系统
+
+本系统用于评测生成的问答对质量，帮助筛选高质量的训练数据。
+
+## 主要功能
+
+1. **问答对生成与评测集成** (新功能)
+   - 支持从多个txt文件批量生成问答对
+   - 自动构建知识图谱并生成多样化问题
+   - 集成质量评测，一步完成生成和筛选
+
+2. **多维度质量评测**
+   - 相关性评分
+   - 完整性评分
+   - 清晰度评分
+   - 准确性评分
+   - 深度评分
+   - LLM综合评分
+
+3. **智能筛选机制**
+   - 基于总分排序
+   - 可配置的阈值过滤
+   - Top-K选择
+
+4. **详细的评测报告**
+   - JSON格式详细报告
+   - 文本摘要报告
+   - 质量分布统计
 
 ## 项目简介
 
@@ -52,19 +79,56 @@ pip install -r requirements.txt
 
 ## 使用方法
 
-### 1. 准备数据
-将您的问答对数据保存为JSON格式：
-```json
-[
-    {
-        "question": "什么是机器学习？",
-        "answer": "机器学习是人工智能的一个分支..."
-    },
-    ...
-]
+### 1. 从多个txt文件生成并评测问答对（推荐）
+
+使用新的集成脚本，可以直接从包含多个txt文件的目录生成问答对并进行评测：
+
+```bash
+# 基本用法
+python qa_test/generate_and_evaluate.py \
+    --input-dir ./texts \
+    --output ./outputs/best_qa_pairs.json \
+    --config qa_test/config.yaml
+
+# 高级用法（指定更多参数）
+python qa_test/generate_and_evaluate.py \
+    --input-dir ./texts \
+    --output ./outputs/best_qa_pairs.json \
+    --config qa_test/config.yaml \
+    --top-k 200 \
+    --min-score 0.7 \
+    --report-dir ./reports \
+    --save-intermediate \
+    --verbose
+
+# 限制处理文件数量（用于测试）
+python qa_test/generate_and_evaluate.py \
+    --input-dir ./texts \
+    --output ./outputs/test_qa_pairs.json \
+    --config qa_test/config.yaml \
+    --max-files 3 \
+    --save-intermediate
 ```
 
-### 2. 运行评测
+#### 参数说明：
+- `--input-dir`: 包含txt文件的输入目录路径
+- `--output`: 输出最佳问答对文件路径
+- `--config`: 配置文件路径（默认: config.yaml）
+- `--top-k`: 选择Top-K个最佳问答对（默认: 100）
+- `--min-score`: 最低分数阈值
+- `--report-dir`: 报告输出目录（默认: reports）
+- `--no-report`: 不生成评测报告
+- `--skip-llm`: 跳过LLM评测（仅使用基于规则的评测）
+- `--verbose`: 显示详细日志
+- `--kg-config`: 知识图谱构建配置文件路径
+- `--qg-config`: 问题生成配置文件路径
+- `--save-intermediate`: 保存中间结果
+- `--max-files`: 最多处理的txt文件数量
+
+### 2. 仅评测已有的问答对（原有功能）
+
+如果你已经有生成好的问答对JSON文件，可以直接进行评测：
+
 ```bash
 python evaluate_qa.py --input your_qa_pairs.json --output best_qa_pairs.json --top_k 100
 ```
@@ -157,3 +221,15 @@ MIT License
 ## 贡献
 
 欢迎提交Issue和Pull Request来改进本项目。
+
+## 运行示例脚本
+
+提供了完整的使用示例脚本：
+
+```bash
+# 查看使用示例
+cat qa_test/example_generate_evaluate.sh
+
+# 运行示例（会创建测试文件并执行）
+bash qa_test/example_generate_evaluate.sh
+```

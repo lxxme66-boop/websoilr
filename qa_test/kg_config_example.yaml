@@ -1,0 +1,61 @@
+# 知识图谱构建配置示例
+# 用于 generate_and_evaluate.py 的 --kg-config 参数
+
+# LLM配置
+llm:
+  provider: "deepseek"
+  model: "deepseek-chat"
+  api_key: ${DEEPSEEK_API_KEY}  # 从环境变量读取
+  base_url: "https://api.deepseek.com"
+  temperature: 0.7
+  max_tokens: 2000
+
+# 实体和关系提取配置
+extraction:
+  # 实体类型（根据领域调整）
+  entity_types:
+    - "技术"
+    - "产品"
+    - "材料"
+    - "工艺"
+    - "设备"
+    - "参数"
+    - "应用"
+    - "公司"
+    - "标准"
+  
+  # 关系类型（根据领域调整）
+  relation_types:
+    - "使用"
+    - "包含"
+    - "具有"
+    - "用于"
+    - "基于"
+    - "影响"
+    - "优化"
+    - "替代"
+    - "改进"
+    - "实现"
+  
+  # 文本分块参数
+  chunk_size: 500          # 每个文本块的大小
+  chunk_overlap: 50        # 块之间的重叠
+  max_entities_per_chunk: 10  # 每个块最多提取的实体数
+  
+  # 提取策略
+  use_coreference: true    # 是否进行指代消解
+  merge_similar: true      # 是否合并相似实体
+  similarity_threshold: 0.85  # 相似度阈值
+
+# 子图提取配置
+subgraph:
+  min_nodes: 2             # 子图最少节点数
+  max_nodes: 8             # 子图最多节点数
+  max_depth: 3             # 最大深度
+  overlap_ratio: 0.3       # 子图之间的重叠率
+  
+# 后处理配置
+post_processing:
+  remove_isolated_nodes: true  # 移除孤立节点
+  merge_duplicate_edges: true  # 合并重复边
+  enrich_with_attributes: true # 添加属性信息
